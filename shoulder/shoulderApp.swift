@@ -21,7 +21,22 @@ struct shoulderApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // Migration failed, delete the old store and create a new one
+            print("Migration failed, deleting old database: \(error)")
+            
+            // Get the application support directory
+            if let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                let storeURL = appSupportURL.appendingPathComponent("default.store")
+                try? FileManager.default.removeItem(at: storeURL)
+                print("Deleted old database at: \(storeURL)")
+            }
+            
+            // Try creating the container again
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                fatalError("Could not create ModelContainer after deleting old database: \(error)")
+            }
         }
     }()
 

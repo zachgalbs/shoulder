@@ -11,19 +11,19 @@ import SwiftData
 @Model
 final class Item {
     var timestamp: Date
-    var appName: String
+    var appName: String = "Unknown App"
     var windowTitle: String?
     var startTime: Date
     var endTime: Date?
     var duration: TimeInterval?
     
-    init(timestamp: Date, appName: String, windowTitle: String? = nil, startTime: Date, endTime: Date? = nil) {
+    init(timestamp: Date, appName: String = "Unknown App", windowTitle: String? = nil, startTime: Date? = nil, endTime: Date? = nil) {
         self.timestamp = timestamp
         self.appName = appName
         self.windowTitle = windowTitle
-        self.startTime = startTime
+        self.startTime = startTime ?? timestamp
         self.endTime = endTime
-        self.duration = endTime != nil ? endTime!.timeIntervalSince(startTime) : nil
+        self.duration = endTime != nil ? endTime!.timeIntervalSince(self.startTime) : nil
     }
     
     func updateEndTime(_ endTime: Date) {
