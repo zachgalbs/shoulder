@@ -30,7 +30,6 @@ struct shoulderApp: App {
             ContentView()
                 .environmentObject(screenMonitor)
                 .onAppear {
-                    print("shoulderApp: Main app view appeared, screenMonitor should be initialized")
                     screenMonitor.setModelContext(sharedModelContainer.mainContext)
                 }
         }

@@ -16,60 +16,41 @@ class ScreenVisibilityMonitor: ObservableObject {
     private var currentSession: Item?
     
     init() {
-        print("ScreenVisibilityMonitor: Initializing...")
         workspace = NSWorkspace.shared
         startMonitoring()
         
-        // Print the current foreground application when the monitor starts
         if let currentApp = getCurrentFrontmostApplication() {
-            print("ScreenVisibilityMonitor: Current foreground application: \(currentApp)")
             startSession(for: currentApp)
-        } else {
-            print("ScreenVisibilityMonitor: Could not determine current foreground application")
         }
     }
     
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
-        print("ScreenVisibilityMonitor: Model context set")
     }
     
     deinit {
-        print("ScreenVisibilityMonitor: Deinitializing...")
         endCurrentSession()
         stopMonitoring()
     }
     
     private func startMonitoring() {
-        print("ScreenVisibilityMonitor: Starting to monitor app changes...")
-        // Listen for application activation notifications
         workspace.notificationCenter.addObserver(
             self,
             selector: #selector(applicationDidActivate),
             name: NSWorkspace.didActivateApplicationNotification,
             object: nil
         )
-        print("ScreenVisibilityMonitor: Observer added successfully")
     }
     
     private func stopMonitoring() {
-        print("ScreenVisibilityMonitor: Stopping monitoring...")
         workspace.notificationCenter.removeObserver(self)
     }
     
     @objc private func applicationDidActivate(_ notification: Notification) {
-        print("ScreenVisibilityMonitor: Application activation notification received!")
         if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
            let appName = app.localizedName {
-            print("ScreenVisibilityMonitor: Foreground application changed to: \(appName)")
-            
-            // End current session if one exists
             endCurrentSession()
-            
-            // Start new session
             startSession(for: appName)
-        } else {
-            print("ScreenVisibilityMonitor: Could not extract app info from notification")
         }
     }
     
@@ -81,10 +62,7 @@ class ScreenVisibilityMonitor: ObservableObject {
     }
     
     private func startSession(for appName: String) {
-        guard let modelContext = modelContext else {
-            print("ScreenVisibilityMonitor: No model context available")
-            return
-        }
+        guard let modelContext = modelContext else { return }
         
         let now = Date()
         let windowTitle = getActiveWindowTitle()
@@ -101,9 +79,8 @@ class ScreenVisibilityMonitor: ObservableObject {
         
         do {
             try modelContext.save()
-            print("ScreenVisibilityMonitor: Started session for \(appName) with window: \(windowTitle ?? "Unknown")")
         } catch {
-            print("ScreenVisibilityMonitor: Failed to save session: \(error)")
+            print("Failed to save session: \(error)")
         }
     }
     
@@ -115,9 +92,8 @@ class ScreenVisibilityMonitor: ObservableObject {
         
         do {
             try modelContext?.save()
-            print("ScreenVisibilityMonitor: Ended session for \(session.appName), duration: \(session.duration ?? 0) seconds")
         } catch {
-            print("ScreenVisibilityMonitor: Failed to save session end: \(error)")
+            print("Failed to save session end: \(error)")
         }
         
         currentSession = nil

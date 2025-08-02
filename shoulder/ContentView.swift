@@ -31,7 +31,7 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
         }
         .onAppear {
-            print("Hello World - App has started!")
+            // App started
         }
     }
 
