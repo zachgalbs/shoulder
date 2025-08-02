@@ -10,6 +10,8 @@ import SwiftData
 
 @main
 struct shoulderApp: App {
+    @StateObject private var screenMonitor = ScreenVisibilityMonitor()
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -26,6 +28,10 @@ struct shoulderApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(screenMonitor)
+                .onAppear {
+                    print("shoulderApp: Main app view appeared, screenMonitor should be initialized")
+                }
         }
         .modelContainer(sharedModelContainer)
     }

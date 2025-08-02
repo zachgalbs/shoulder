@@ -35,6 +35,9 @@ struct ContentView: View {
         } detail: {
             Text("Select an item")
         }
+        .onAppear {
+            print("Hello World - App has started!")
+        }
     }
 
     private func addItem() {
@@ -51,9 +54,4 @@ struct ContentView: View {
             }
         }
     }
-}
-
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
