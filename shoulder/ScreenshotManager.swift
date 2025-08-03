@@ -30,6 +30,7 @@ class ScreenshotManager: ObservableObject {
     private var timer: Timer?
     private let captureInterval: TimeInterval = 60.0 // 1 minute
     private var baseDirectoryURL: URL?
+    private let mlxProcessor = MLXProcessor()
     
     init() {
         setupDirectories()
@@ -183,6 +184,11 @@ class ScreenshotManager: ObservableObject {
         do {
             try markdownContent.write(to: markdownURL, atomically: true, encoding: .utf8)
             print("OCR text saved: \(markdownFilename)")
+            
+            // Process with MLX in background
+            Task {
+                await processWithMLX(markdownContent: markdownContent, fileURL: markdownURL)
+            }
         } catch {
             print("Failed to save OCR text: \(error)")
         }
@@ -328,5 +334,52 @@ class ScreenshotManager: ObservableObject {
         }
         
         return result
+    }
+    
+    private func processWithMLX(markdownContent: String, fileURL: URL) async {
+        do {
+            print("MLX: Starting AI analysis...")
+            let analysis = await mlxProcessor.analyzeMarkdown(markdownContent)
+            
+            // Create enhanced markdown with AI analysis
+            let enhancedMarkdown = appendMLXAnalysis(originalMarkdown: markdownContent, analysis: analysis)
+            
+            // Update the file with enhanced content
+            try enhancedMarkdown.write(to: fileURL, atomically: true, encoding: .utf8)
+            print("MLX: Enhanced markdown saved with AI analysis (processed in \(String(format: "%.2f", analysis.processingTime))s)")
+            
+        } catch {
+            print("MLX: Failed to process markdown: \(error)")
+        }
+    }
+    
+    private func appendMLXAnalysis(originalMarkdown: String, analysis: AnalysisResult) -> String {
+        let mlxSection = """
+        
+        ---
+        
+        ## MLX Analysis
+        **Model**: Llama 3.2 3B (local placeholder)
+        **Processing Time**: \(String(format: "%.2f", analysis.processingTime))s
+        **Timestamp**: \(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium))
+        
+        ### Activity Summary
+        \(analysis.summary)
+        
+        ### Detected Activities
+        \(analysis.activities.isEmpty ? "- No specific activities detected" : analysis.activities.map { "- \($0)" }.joined(separator: "\n"))
+        
+        ### Applications Context
+        \(analysis.applications.isEmpty ? "- No specific applications detected" : analysis.applications.map { "- \($0)" }.joined(separator: "\n"))
+        
+        ### Content Classification
+        **Type**: \(analysis.contentType)
+        
+        ### Smart Tags
+        \(analysis.tags.isEmpty ? "_No tags generated_" : analysis.tags.map { "`\($0)`" }.joined(separator: " "))
+        
+        """
+        
+        return originalMarkdown + mlxSection
     }
 }

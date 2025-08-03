@@ -12,7 +12,7 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 
 - **shoulderApp.swift**: Main app entry point with SwiftData model container configured for in-memory storage only
 - **ScreenVisibilityMonitor**: Tracks application switching using NSWorkspace notifications and Accessibility APIs to capture window titles
-- **ScreenshotManager**: Handles automated screenshot capture using CGDisplayCreateImage and OCR text extraction using Vision framework, saving to `~/src/shoulder/screenshots/YYYY-MM-DD/`
+- **ScreenshotManager**: Handles automated screenshot capture using CGDisplayCreateImage, OCR text extraction using Vision framework, and AI analysis using MLX framework, saving to `~/src/shoulder/screenshots/YYYY-MM-DD/`
 - **Item.swift**: SwiftData model representing app usage sessions with start/end times and calculated duration
 - **ContentView.swift**: Main UI with navigation split view showing session list and detail views
 
@@ -22,9 +22,10 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 2. ScreenVisibilityMonitor starts tracking frontmost application changes
 3. ScreenshotManager begins periodic capture on 60-second timer
 4. Each screenshot triggers OCR processing using Vision framework
-5. OCR results saved as markdown files alongside screenshots
-6. Each app switch creates new Item session, ending the previous one
-7. UI displays sessions sorted by start time (most recent first)
+5. OCR results saved as initial markdown files alongside screenshots
+6. MLX processor analyzes OCR content and appends AI insights to markdown
+7. Each app switch creates new Item session, ending the previous one
+8. UI displays sessions sorted by start time (most recent first)
 
 ### Key Technologies
 
@@ -34,6 +35,7 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 - Accessibility APIs (AXUIElement) for window title capture
 - ScreenCaptureKit/Core Graphics for screenshot functionality
 - Vision framework for OCR text extraction
+- MLX framework for local AI processing (placeholder for future Llama 3.2 3B integration)
 - AppKit for macOS integration
 
 ## Development Commands
@@ -72,7 +74,8 @@ The app accesses sensitive system APIs for screen capture and application monito
 ## File Structure Notes
 
 - Screenshots are organized by date: `~/src/shoulder/screenshots/YYYY-MM-DD/screenshot-HH-MM-SS.png`
-- OCR text files saved alongside screenshots: `~/src/shoulder/screenshots/YYYY-MM-DD/screenshot-HH-MM-SS.md`
+- Enhanced markdown files with OCR + AI analysis: `~/src/shoulder/screenshots/YYYY-MM-DD/screenshot-HH-MM-SS.md`
 - OCR processing runs asynchronously using Vision framework for optimal performance
+- MLX AI analysis runs in background after OCR completion, enhancing markdown with activity insights
 - SwiftData storage is intentionally in-memory only to avoid persistence issues
 - All monitoring components are ObservableObject classes for SwiftUI integration
