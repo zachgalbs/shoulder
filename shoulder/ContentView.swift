@@ -12,39 +12,121 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
+    @State private var selectedTab: Tab = .dashboard
+    
+    enum Tab: String, CaseIterable {
+        case dashboard = "Dashboard"
+        case sessions = "Sessions"
+        case settings = "Settings"
+        
+        var icon: String {
+            switch self {
+            case .dashboard: return "square.grid.2x2"
+            case .sessions: return "list.bullet.rectangle"
+            case .settings: return "gearshape"
+            }
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        SessionDetailView(session: item)
-                    } label: {
-                        SessionRowView(session: item)
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .navigationSplitViewColumnWidth(min: 250, ideal: 300)
-            .navigationTitle("App Sessions")
-            .toolbar {
-                ToolbarItem(placement: .status) {
-                    HStack {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 8, height: 8)
-                        Text("Recording")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
+            sidebarContent
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         } detail: {
-            Text("Select a session to view details")
-                .foregroundColor(.secondary)
+            NavigationStack {
+                ZStack {
+                    switch selectedTab {
+                    case .dashboard:
+                        DashboardView()
+                    case .sessions:
+                        SessionsListView()
+                    case .settings:
+                        SettingsView()
+                    }
+                }
+            }
         }
-        .onAppear {
-            // App started
+        .navigationSplitViewStyle(.balanced)
+    }
+    
+    private var sidebarContent: some View {
+        VStack(spacing: 0) {
+            appHeader
+            
+            List(selection: $selectedTab) {
+                ForEach(Tab.allCases, id: \.self) { tab in
+                    NavigationLink(value: tab) {
+                        Label {
+                            Text(tab.rawValue)
+                                .font(.subheadline)
+                        } icon: {
+                            Image(systemName: tab.icon)
+                                .font(.subheadline)
+                                .foregroundColor(selectedTab == tab ? DesignSystem.Colors.accentBlue : DesignSystem.Colors.textSecondary)
+                        }
+                    }
+                    .tag(tab)
+                }
+            }
+            .listStyle(.sidebar)
+            
+            Spacer()
+            
+            statusBar
+        }
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    }
+    
+    private var appHeader: some View {
+        VStack(spacing: DesignSystem.Spacing.small) {
+            HStack {
+                Image(systemName: "eye.trianglebadge.exclamationmark")
+                    .font(.title)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [DesignSystem.Colors.accentBlue, DesignSystem.Colors.accentPurple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shoulder")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Activity Monitor")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                Spacer()
+            }
+            .padding(DesignSystem.Spacing.medium)
+            
+            Divider()
+        }
+    }
+    
+    private var statusBar: some View {
+        VStack(spacing: DesignSystem.Spacing.small) {
+            Divider()
+            
+            HStack {
+                HStack(spacing: DesignSystem.Spacing.xSmall) {
+                    PulsingDot(color: DesignSystem.Colors.activeGreen, size: 8)
+                    Text("Recording")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                Spacer()
+                
+                Text("\(items.count) sessions")
+                    .font(.caption2)
+                    .foregroundColor(DesignSystem.Colors.textTertiary)
+            }
+            .padding(DesignSystem.Spacing.medium)
         }
     }
 
@@ -57,108 +139,92 @@ struct ContentView: View {
     }
 }
 
-struct SessionRowView: View {
-    let session: Item
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(session.appName)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer()
-                if let duration = session.duration {
-                    Text(formatDuration(duration))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("Active")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                }
-            }
-            
-            if let windowTitle = session.windowTitle {
-                Text(windowTitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            
-            Text(session.startTime, format: Date.FormatStyle(date: .abbreviated, time: .shortened))
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-        .padding(.vertical, 2)
-    }
-    
-    private func formatDuration(_ duration: TimeInterval) -> String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        if minutes > 0 {
-            return "\(minutes)m \(seconds)s"
-        } else {
-            return "\(seconds)s"
-        }
-    }
-}
-
 struct SessionDetailView: View {
     let session: Item
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(session.appName)
-                .font(.largeTitle)
-                .bold()
-            
-            if let windowTitle = session.windowTitle {
-                Text("Window: \(windowTitle)")
-                    .font(.title3)
-                    .foregroundColor(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.large) {
+                headerSection
+                overviewSection
             }
+            .padding(DesignSystem.Spacing.large)
+        }
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(NSColor.windowBackgroundColor),
+                    DesignSystem.Colors.accentBlue.opacity(0.03)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .navigationTitle("Session Details")
+    }
+    
+    private var headerSection: some View {
+        HStack(spacing: DesignSystem.Spacing.large) {
+            AppIconView(appName: session.appName, size: 64)
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Session Details")
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xSmall) {
+                Text(session.appName)
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
                 
-                HStack {
-                    Text("Started:")
-                    Spacer()
-                    Text(session.startTime, format: Date.FormatStyle(date: .abbreviated, time: .standard))
+                if let windowTitle = session.windowTitle {
+                    Text(windowTitle)
+                        .font(.title3)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
                 }
                 
-                if let endTime = session.endTime {
-                    HStack {
-                        Text("Ended:")
-                        Spacer()
-                        Text(endTime, format: Date.FormatStyle(date: .abbreviated, time: .standard))
+                HStack(spacing: DesignSystem.Spacing.medium) {
+                    if session.endTime == nil {
+                        HStack(spacing: DesignSystem.Spacing.xxSmall) {
+                            PulsingDot(color: DesignSystem.Colors.activeGreen, size: 8)
+                            Text("Active Session")
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.activeGreen)
+                        }
+                    } else {
+                        HStack(spacing: DesignSystem.Spacing.xxSmall) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(DesignSystem.Colors.textTertiary)
+                            Text("Completed")
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.textTertiary)
+                        }
                     }
-                } else {
-                    HStack {
-                        Text("Status:")
-                        Spacer()
-                        Text("Active")
-                            .foregroundColor(.green)
-                    }
-                }
-                
-                if let duration = session.duration {
-                    HStack {
-                        Text("Duration:")
-                        Spacer()
+                    
+                    if let duration = session.duration {
+                        Text("•")
+                            .foregroundColor(DesignSystem.Colors.textTertiary)
                         Text(formatDuration(duration))
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
                 }
             }
-            .padding()
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(8)
             
             Spacer()
         }
-        .padding()
-        .navigationTitle("Session Details")
+        .padding(DesignSystem.Spacing.large)
+        .glassCard()
+    }
+    
+    private var overviewSection: some View {
+        VStack(spacing: DesignSystem.Spacing.medium) {
+            DetailRow(label: "Started", value: session.startTime.formatted(date: .abbreviated, time: .standard), icon: "play.circle")
+            
+            if let endTime = session.endTime {
+                DetailRow(label: "Ended", value: endTime.formatted(date: .abbreviated, time: .standard), icon: "stop.circle")
+            }
+            
+            if let duration = session.duration {
+                DetailRow(label: "Duration", value: formatDuration(duration), icon: "timer")
+            }
+        }
     }
     
     private func formatDuration(_ duration: TimeInterval) -> String {
@@ -173,5 +239,85 @@ struct SessionDetailView: View {
         } else {
             return String(format: "%ds", seconds)
         }
+    }
+}
+
+struct DetailRow: View {
+    let label: String
+    let value: String
+    let icon: String
+    
+    var body: some View {
+        HStack {
+            HStack(spacing: DesignSystem.Spacing.small) {
+                Image(systemName: icon)
+                    .foregroundColor(DesignSystem.Colors.accentBlue)
+                    .frame(width: 20)
+                
+                Text(label)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+            }
+            
+            Spacer()
+            
+            Text(value)
+                .foregroundColor(DesignSystem.Colors.textPrimary)
+                .fontWeight(.medium)
+        }
+        .padding(DesignSystem.Spacing.medium)
+        .glassCard()
+    }
+}
+
+struct SettingsView: View {
+    @AppStorage("screenshotInterval") private var screenshotInterval = 60
+    @AppStorage("enableOCR") private var enableOCR = true
+    @AppStorage("enableAIAnalysis") private var enableAIAnalysis = false
+    
+    var body: some View {
+        Form {
+            Section("Screenshot Settings") {
+                HStack {
+                    Text("Capture Interval")
+                    Spacer()
+                    Picker("", selection: $screenshotInterval) {
+                        Text("30 seconds").tag(30)
+                        Text("1 minute").tag(60)
+                        Text("2 minutes").tag(120)
+                        Text("5 minutes").tag(300)
+                    }
+                    .pickerStyle(.menu)
+                }
+                
+                Toggle("Enable OCR Processing", isOn: $enableOCR)
+                Toggle("Enable AI Analysis", isOn: $enableAIAnalysis)
+                    .disabled(!enableOCR)
+            }
+            
+            Section("Storage") {
+                HStack {
+                    Text("Screenshot Location")
+                    Spacer()
+                    Text("~/src/shoulder/screenshots")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                Button("Open Screenshots Folder") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/screenshots"))
+                }
+            }
+            
+            Section("About") {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text("1.0.0")
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Settings")
     }
 }
