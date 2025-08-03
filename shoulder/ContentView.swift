@@ -11,6 +11,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
+    @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
 
     var body: some View {
         NavigationSplitView {
@@ -26,6 +27,18 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 250, ideal: 300)
             .navigationTitle("App Sessions")
+            .toolbar {
+                ToolbarItem(placement: .status) {
+                    HStack {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 8, height: 8)
+                        Text("Recording")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
         } detail: {
             Text("Select a session to view details")
                 .foregroundColor(.secondary)

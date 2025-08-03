@@ -11,6 +11,7 @@ import SwiftData
 @main
 struct shoulderApp: App {
     @StateObject private var screenMonitor = ScreenVisibilityMonitor()
+    @StateObject private var screenshotManager = ScreenshotManager()
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -31,6 +32,7 @@ struct shoulderApp: App {
                 .environmentObject(screenMonitor)
                 .onAppear {
                     screenMonitor.setModelContext(sharedModelContainer.mainContext)
+                    screenshotManager.startCapturing()
                 }
         }
         .modelContainer(sharedModelContainer)
