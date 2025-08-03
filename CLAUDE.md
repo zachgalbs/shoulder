@@ -13,8 +13,10 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 - **shoulderApp.swift**: Main app entry point with SwiftData model container configured for in-memory storage only
 - **ScreenVisibilityMonitor**: Tracks application switching using NSWorkspace notifications and Accessibility APIs to capture window titles
 - **ScreenshotManager**: Handles automated screenshot capture using CGDisplayCreateImage and OCR text extraction using Vision framework, saving to `~/src/shoulder/screenshots/YYYY-MM-DD/`
+- **LLMAnalysisManager**: Manages local LLM server (Python/FastAPI/Ollama) for AI-powered productivity analysis, saving insights to `~/src/shoulder/analyses/YYYY-MM-DD/`
 - **Item.swift**: SwiftData model representing app usage sessions with start/end times and calculated duration
 - **ContentView.swift**: Main UI with navigation split view showing session list and detail views
+- **DashboardView.swift**: Primary dashboard with activity overview, AI insights, and real-time session monitoring
 
 ### Data Flow
 
@@ -23,8 +25,10 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 3. ScreenshotManager begins periodic capture on 60-second timer
 4. Each screenshot triggers OCR processing using Vision framework
 5. OCR results saved as markdown files alongside screenshots
-6. Each app switch creates new Item session, ending the previous one
-7. UI displays sessions sorted by start time (most recent first)
+6. LLM analyzes OCR text for productivity insights (when enabled)
+7. Analysis results saved to `~/src/shoulder/analyses/YYYY-MM-DD/`
+8. Each app switch creates new Item session, ending the previous one
+9. UI displays sessions sorted by start time (most recent first)
 
 ### Key Technologies
 
@@ -73,6 +77,8 @@ The app accesses sensitive system APIs for screen capture and application monito
 
 - Screenshots are organized by date: `~/src/shoulder/screenshots/YYYY-MM-DD/screenshot-HH-MM-SS.png`
 - Markdown files with OCR text: `~/src/shoulder/screenshots/YYYY-MM-DD/screenshot-HH-MM-SS.md`
+- LLM analysis results: `~/src/shoulder/analyses/YYYY-MM-DD/analysis-HH-MM-SS.json`
 - OCR processing runs asynchronously using Vision framework for optimal performance
+- LLM analysis via local Python server using Ollama (dolphin-mistral model)
 - SwiftData storage is intentionally in-memory only to avoid persistence issues
 - All monitoring components are ObservableObject classes for SwiftUI integration

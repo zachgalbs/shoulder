@@ -30,9 +30,15 @@ class ScreenshotManager: ObservableObject {
     private var timer: Timer?
     private let captureInterval: TimeInterval = 60.0 // 1 minute
     private var baseDirectoryURL: URL?
+    private var llmAnalysisManager: LLMAnalysisManager?
+    @Published var lastOCRText: String?
     
     init() {
         setupDirectories()
+    }
+    
+    func setLLMManager(_ manager: LLMAnalysisManager) {
+        self.llmAnalysisManager = manager
     }
     
     deinit {
@@ -183,6 +189,11 @@ class ScreenshotManager: ObservableObject {
         do {
             try markdownContent.write(to: markdownURL, atomically: true, encoding: .utf8)
             print("OCR text saved: \(markdownFilename)")
+            
+            // Store the OCR text for potential LLM analysis
+            DispatchQueue.main.async { [weak self] in
+                self?.lastOCRText = spatialTexts.map { $0.text }.joined(separator: " ")
+            }
         } catch {
             print("Failed to save OCR text: \(error)")
         }

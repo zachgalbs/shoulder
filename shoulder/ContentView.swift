@@ -12,6 +12,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
+    @EnvironmentObject var llmAnalysisManager: LLMAnalysisManager
     @State private var selectedTab: Tab = .dashboard
     
     enum Tab: String, CaseIterable {
@@ -119,6 +120,10 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
+                
+                Spacer()
+                
+                LLMStatusView(llmManager: llmAnalysisManager)
                 
                 Spacer()
                 
@@ -303,8 +308,24 @@ struct SettingsView: View {
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
                 
-                Button("Open Screenshots Folder") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/screenshots"))
+                HStack {
+                    Text("Analysis Location")
+                    Spacer()
+                    Text("~/src/shoulder/analyses")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                
+                HStack {
+                    Button("Open Screenshots Folder") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/screenshots"))
+                    }
+                    
+                    Spacer()
+                    
+                    Button("Open Analyses Folder") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/analyses"))
+                    }
                 }
             }
             

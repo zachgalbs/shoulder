@@ -11,6 +11,8 @@ import SwiftData
 struct DashboardView: View {
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
+    @EnvironmentObject var llmAnalysisManager: LLMAnalysisManager
+    @EnvironmentObject var screenshotManager: ScreenshotManager
     
     private var activeSession: Item? {
         items.first { $0.endTime == nil }
@@ -31,6 +33,9 @@ struct DashboardView: View {
             VStack(spacing: DesignSystem.Spacing.large) {
                 headerSection
                 todaysSummary
+                if llmAnalysisManager.isServerRunning {
+                    aiInsightsSection
+                }
                 activeSessionCard
                 recentActivitySection
             }
@@ -156,6 +161,104 @@ struct DashboardView: View {
                         .stroke(DesignSystem.Colors.activeGreen.opacity(0.3), lineWidth: 2)
                 )
             }
+        }
+    }
+    
+    private var aiInsightsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.medium) {
+            HStack {
+                Image(systemName: "brain")
+                    .font(.title3)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [DesignSystem.Colors.accentPurple, DesignSystem.Colors.accentBlue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text("AI Insights")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                if llmAnalysisManager.isAnalyzing {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else if let lastAnalysis = llmAnalysisManager.lastAnalysis {
+                    Button(action: analyzeCurrentSession) {
+                        Label("Analyze Now", systemImage: "arrow.clockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(DesignSystem.Colors.accentBlue)
+                }
+            }
+            
+            if let analysis = llmAnalysisManager.lastAnalysis {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.small) {
+                    Text(analysis.summary)
+                        .font(.subheadline)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    HStack(spacing: DesignSystem.Spacing.medium) {
+                        Label(analysis.category, systemImage: "tag.fill")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.accentPurple)
+                        
+                        Label(String(format: "%.0f%% Productive", analysis.productivity_score * 100), 
+                              systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.caption)
+                            .foregroundColor(productivityColor(for: analysis.productivity_score))
+                    }
+                    
+                    if !analysis.key_activities.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Key Activities:")
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            
+                            ForEach(analysis.key_activities.prefix(3), id: \.self) { activity in
+                                HStack(spacing: 4) {
+                                    Text("•")
+                                        .foregroundColor(DesignSystem.Colors.accentBlue)
+                                    Text(activity)
+                                        .font(.caption)
+                                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(DesignSystem.Spacing.medium)
+                .glassCard()
+            } else {
+                Text("AI analysis will appear here once activity is detected")
+                    .font(.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                    .padding(DesignSystem.Spacing.medium)
+                    .frame(maxWidth: .infinity)
+                    .glassCard()
+            }
+        }
+    }
+    
+    private func productivityColor(for score: Double) -> Color {
+        if score >= 0.7 {
+            return DesignSystem.Colors.activeGreen
+        } else if score >= 0.4 {
+            return Color.orange
+        } else {
+            return Color.red
+        }
+    }
+    
+    private func analyzeCurrentSession() {
+        guard let activeSession = activeSession,
+              let ocrText = screenshotManager.lastOCRText else { return }
+        
+        Task {
+            await llmAnalysisManager.analyzeSession(activeSession, ocrText: ocrText)
         }
     }
     
