@@ -57,6 +57,8 @@ The project uses Swift Testing framework. Test files are in `shoulderTests/` and
 
 **IMPORTANT**: Always test that the app builds and runs correctly before committing and pushing changes. The user wants to review functionality before any commits are made.
 
+- Always allow the user to test the functionality before pushing to git
+
 ## Security Considerations
 
 The app requires specific entitlements in `shoulder.entitlements`:

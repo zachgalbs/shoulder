@@ -10,6 +10,22 @@ import AppKit
 import ScreenCaptureKit
 import Vision
 
+struct SpatialText {
+    let text: String
+    let confidence: Float
+    let boundingBox: CGRect
+    let centerY: CGFloat
+    let centerX: CGFloat
+    
+    init(text: String, confidence: Float, boundingBox: CGRect) {
+        self.text = text
+        self.confidence = confidence
+        self.boundingBox = boundingBox
+        self.centerY = boundingBox.midY
+        self.centerX = boundingBox.midX
+    }
+}
+
 class ScreenshotManager: ObservableObject {
     private var timer: Timer?
     private let captureInterval: TimeInterval = 60.0 // 1 minute
@@ -141,20 +157,22 @@ class ScreenshotManager: ObservableObject {
             return
         }
         
-        // Extract text and confidence scores
-        var extractedText: [String] = []
-        var confidenceScores: [Float] = []
+        // Extract text with spatial information
+        var spatialTexts: [SpatialText] = []
         
         for observation in observations {
             guard let topCandidate = observation.topCandidates(1).first else { continue }
-            extractedText.append(topCandidate.string)
-            confidenceScores.append(topCandidate.confidence)
+            let spatialText = SpatialText(
+                text: topCandidate.string,
+                confidence: topCandidate.confidence,
+                boundingBox: observation.boundingBox
+            )
+            spatialTexts.append(spatialText)
         }
         
-        // Create markdown content
-        let markdownContent = createMarkdownContent(
-            text: extractedText,
-            confidenceScores: confidenceScores,
+        // Create LLM-optimized markdown content
+        let markdownContent = createOptimizedMarkdownContent(
+            spatialTexts: spatialTexts,
             timestamp: filename
         )
         
@@ -170,38 +188,145 @@ class ScreenshotManager: ObservableObject {
         }
     }
     
-    private func createMarkdownContent(text: [String], confidenceScores: [Float], timestamp: String) -> String {
+    private func createOptimizedMarkdownContent(spatialTexts: [SpatialText], timestamp: String) -> String {
         let date = Date()
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         
-        var markdown = """
-        # Screenshot OCR - \(timestamp)
+        // Sort text by reading order (top to bottom, left to right)
+        let sortedTexts = spatialTexts.sorted { first, second in
+            let yThreshold: CGFloat = 0.02 // Consider items on same line if within 2% of screen height
+            if abs(first.centerY - second.centerY) < yThreshold {
+                return first.centerX < second.centerX // Same line: left to right
+            }
+            return first.centerY > second.centerY // Different lines: top to bottom (flipped coordinates)
+        }
         
-        **Captured:** \(formatter.string(from: date))
-        **Text Blocks Found:** \(text.count)
-        **Average Confidence:** \(String(format: "%.2f", confidenceScores.isEmpty ? 0.0 : confidenceScores.reduce(0, +) / Float(confidenceScores.count)))
+        // Group text into coherent sections
+        let groupedSections = groupTextIntoSections(sortedTexts)
+        
+        // Calculate statistics
+        let totalText = spatialTexts.count
+        let highConfidenceCount = spatialTexts.filter { $0.confidence > 0.8 }.count
+        let avgConfidence = spatialTexts.isEmpty ? 0.0 : spatialTexts.map { $0.confidence }.reduce(0, +) / Float(spatialTexts.count)
+        
+        var markdown = """
+        # Screenshot Analysis - \(timestamp)
+        
+        **Metadata:**
+        - Captured: \(formatter.string(from: date))
+        - Total Text Elements: \(totalText)
+        - High Confidence (>80%): \(highConfidenceCount)/\(totalText)
+        - Average Confidence: \(String(format: "%.1f%%", avgConfidence * 100))
+        - Content Regions: \(groupedSections.count)
         
         ---
         
-        ## Extracted Text
-        
         """
         
-        if text.isEmpty {
-            markdown += "_No text found in screenshot_\n"
+        if groupedSections.isEmpty {
+            markdown += "\n_No text detected in screenshot._\n"
         } else {
-            for (index, textBlock) in text.enumerated() {
-                let confidence = confidenceScores.indices.contains(index) ? confidenceScores[index] : 0.0
-                markdown += """
-                ### Block \(index + 1) (Confidence: \(String(format: "%.2f", confidence)))
-                
-                \(textBlock)
-                
-                """
+            for (index, section) in groupedSections.enumerated() {
+                markdown += "\n## Region \(index + 1)\n\n"
+                markdown += reconstructTextFlow(from: section)
+                markdown += "\n"
             }
         }
         
+        // Add spatial debugging info for development
+        markdown += """
+        
+        ---
+        
+        ## Debug Info
+        - Screen regions detected: \(groupedSections.count)
+        - Processing method: Spatial grouping with reading order reconstruction
+        
+        """
+        
         return markdown
+    }
+    
+    private func groupTextIntoSections(_ sortedTexts: [SpatialText]) -> [[SpatialText]] {
+        guard !sortedTexts.isEmpty else { return [] }
+        
+        var sections: [[SpatialText]] = []
+        var currentSection: [SpatialText] = [sortedTexts[0]]
+        
+        for i in 1..<sortedTexts.count {
+            let current = sortedTexts[i]
+            let previous = sortedTexts[i-1]
+            
+            // Group items that are vertically close (within 15% of screen height)
+            let verticalThreshold: CGFloat = 0.15
+            let horizontalThreshold: CGFloat = 0.3
+            
+            let verticalDistance = abs(current.centerY - previous.centerY)
+            let horizontalDistance = abs(current.centerX - previous.centerX)
+            
+            // Start new section if there's a significant spatial gap
+            if verticalDistance > verticalThreshold || horizontalDistance > horizontalThreshold {
+                if !currentSection.isEmpty {
+                    sections.append(currentSection)
+                }
+                currentSection = [current]
+            } else {
+                currentSection.append(current)
+            }
+        }
+        
+        // Add the last section
+        if !currentSection.isEmpty {
+            sections.append(currentSection)
+        }
+        
+        return sections
+    }
+    
+    private func reconstructTextFlow(from texts: [SpatialText]) -> String {
+        guard !texts.isEmpty else { return "_Empty section_" }
+        
+        // Detect if this looks like code/terminal content
+        let codeIndicators = ["$", "git", "npm", "cd", "ls", "mkdir", "->", "=>", "function", "import"]
+        let containsCode = texts.contains { text in
+            codeIndicators.contains { indicator in
+                text.text.lowercased().contains(indicator.lowercased())
+            }
+        }
+        
+        if containsCode {
+            // Format as code block
+            let codeContent = texts.map { $0.text }.joined(separator: " ")
+            return "```\n\(codeContent)\n```\n"
+        }
+        
+        // Reconstruct natural text flow
+        var result = ""
+        var currentLine = ""
+        let lineThreshold: CGFloat = 0.02 // Items within 2% height are on same line
+        
+        for (index, text) in texts.enumerated() {
+            if index == 0 {
+                currentLine = text.text
+            } else {
+                let previousText = texts[index - 1]
+                let onSameLine = abs(text.centerY - previousText.centerY) < lineThreshold
+                
+                if onSameLine {
+                    currentLine += " " + text.text
+                } else {
+                    result += currentLine + "\n"
+                    currentLine = text.text
+                }
+            }
+        }
+        
+        // Add the last line
+        if !currentLine.isEmpty {
+            result += currentLine + "\n"
+        }
+        
+        return result
     }
 }
