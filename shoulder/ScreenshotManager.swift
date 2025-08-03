@@ -8,6 +8,7 @@
 import Foundation
 import AppKit
 import ScreenCaptureKit
+import Vision
 
 class ScreenshotManager: ObservableObject {
     private var timer: Timer?
@@ -96,6 +97,9 @@ class ScreenshotManager: ObservableObject {
                 do {
                     try pngData.write(to: fileURL)
                     print("Screenshot saved: \(filename)")
+                    
+                    // Process OCR asynchronously
+                    processOCR(for: image, at: todayFolderURL, filename: timeString)
                 } catch {
                     print("Failed to save screenshot: \(error)")
                 }
@@ -103,5 +107,101 @@ class ScreenshotManager: ObservableObject {
         } else {
             print("Failed to capture screenshot")
         }
+    }
+    
+    private func processOCR(for cgImage: CGImage, at folderURL: URL, filename: String) {
+        let request = VNRecognizeTextRequest { [weak self] request, error in
+            self?.handleOCRResult(request: request, error: error, folderURL: folderURL, filename: filename)
+        }
+        
+        // Configure for best accuracy
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        
+        // Process the image
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                try handler.perform([request])
+            } catch {
+                print("OCR processing failed: \(error)")
+            }
+        }
+    }
+    
+    private func handleOCRResult(request: VNRequest, error: Error?, folderURL: URL, filename: String) {
+        guard error == nil else {
+            print("OCR request failed: \(error!)")
+            return
+        }
+        
+        guard let observations = request.results as? [VNRecognizedTextObservation] else {
+            print("No text observations found")
+            return
+        }
+        
+        // Extract text and confidence scores
+        var extractedText: [String] = []
+        var confidenceScores: [Float] = []
+        
+        for observation in observations {
+            guard let topCandidate = observation.topCandidates(1).first else { continue }
+            extractedText.append(topCandidate.string)
+            confidenceScores.append(topCandidate.confidence)
+        }
+        
+        // Create markdown content
+        let markdownContent = createMarkdownContent(
+            text: extractedText,
+            confidenceScores: confidenceScores,
+            timestamp: filename
+        )
+        
+        // Save markdown file
+        let markdownFilename = "screenshot-\(filename).md"
+        let markdownURL = folderURL.appendingPathComponent(markdownFilename)
+        
+        do {
+            try markdownContent.write(to: markdownURL, atomically: true, encoding: .utf8)
+            print("OCR text saved: \(markdownFilename)")
+        } catch {
+            print("Failed to save OCR text: \(error)")
+        }
+    }
+    
+    private func createMarkdownContent(text: [String], confidenceScores: [Float], timestamp: String) -> String {
+        let date = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        
+        var markdown = """
+        # Screenshot OCR - \(timestamp)
+        
+        **Captured:** \(formatter.string(from: date))
+        **Text Blocks Found:** \(text.count)
+        **Average Confidence:** \(String(format: "%.2f", confidenceScores.isEmpty ? 0.0 : confidenceScores.reduce(0, +) / Float(confidenceScores.count)))
+        
+        ---
+        
+        ## Extracted Text
+        
+        """
+        
+        if text.isEmpty {
+            markdown += "_No text found in screenshot_\n"
+        } else {
+            for (index, textBlock) in text.enumerated() {
+                let confidence = confidenceScores.indices.contains(index) ? confidenceScores[index] : 0.0
+                markdown += """
+                ### Block \(index + 1) (Confidence: \(String(format: "%.2f", confidence)))
+                
+                \(textBlock)
+                
+                """
+            }
+        }
+        
+        return markdown
     }
 }
