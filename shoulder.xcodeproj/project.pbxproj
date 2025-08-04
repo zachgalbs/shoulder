@@ -27,6 +27,7 @@
 		6876FB9A2E3E9FAD008033D5 /* shoulder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shoulder.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6876FBAD2E3E9FAE008033D5 /* shoulderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shoulderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6876FBB72E3E9FAE008033D5 /* shoulderUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shoulderUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		68CBC7C02E4141F80083CEB7 /* shoulder.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = shoulder.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -38,11 +39,6 @@
 		6876FBB02E3E9FAE008033D5 /* shoulderTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = shoulderTests;
-			sourceTree = "<group>";
-		};
-		6876FBBA2E3E9FAE008033D5 /* shoulderUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = shoulderUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +71,9 @@
 		6876FB912E3E9FAD008033D5 = {
 			isa = PBXGroup;
 			children = (
+				68CBC7C02E4141F80083CEB7 /* shoulder.xctestplan */,
 				6876FB9C2E3E9FAD008033D5 /* shoulder */,
 				6876FBB02E3E9FAE008033D5 /* shoulderTests */,
-				6876FBBA2E3E9FAE008033D5 /* shoulderUITests */,
 				6876FB9B2E3E9FAD008033D5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -152,9 +148,6 @@
 			);
 			dependencies = (
 				6876FBB92E3E9FAE008033D5 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				6876FBBA2E3E9FAE008033D5 /* shoulderUITests */,
 			);
 			name = shoulderUITests;
 			packageProductDependencies = (
