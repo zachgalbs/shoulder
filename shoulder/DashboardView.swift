@@ -32,6 +32,7 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: DesignSystem.Spacing.large) {
                 headerSection
+                llmServerStatus
                 todaysSummary
                 if llmAnalysisManager.isServerRunning {
                     aiInsightsSection
@@ -80,6 +81,64 @@ struct DashboardView: View {
             .padding(.horizontal, DesignSystem.Spacing.small)
             .padding(.vertical, DesignSystem.Spacing.xSmall)
             .background(Capsule().fill(DesignSystem.Colors.activeGreen.opacity(0.1)))
+        }
+    }
+    
+    private var llmServerStatus: some View {
+        HStack {
+            if !llmAnalysisManager.isServerReady {
+                // Server is starting
+                HStack(spacing: DesignSystem.Spacing.small) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text(llmAnalysisManager.serverStartupMessage)
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.medium)
+                .padding(.vertical, DesignSystem.Spacing.small)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                        .fill(Color.orange.opacity(0.1))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                )
+            } else if llmAnalysisManager.isServerRunning {
+                // Server is ready
+                HStack(spacing: DesignSystem.Spacing.small) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(DesignSystem.Colors.activeGreen)
+                        .font(.caption)
+                    Text("AI Analysis Ready")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.activeGreen)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.medium)
+                .padding(.vertical, DesignSystem.Spacing.small)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                        .fill(DesignSystem.Colors.activeGreen.opacity(0.1))
+                )
+            } else {
+                // Server failed to start
+                HStack(spacing: DesignSystem.Spacing.small) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                    Text("AI Analysis Unavailable")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.medium)
+                .padding(.vertical, DesignSystem.Spacing.small)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                        .fill(Color.red.opacity(0.1))
+                )
+            }
+            Spacer()
         }
     }
     

@@ -39,9 +39,11 @@ struct AnalysisContext: Codable {
 @MainActor
 class LLMAnalysisManager: ObservableObject {
     @Published var isServerRunning = false
+    @Published var isServerReady = false  // True only when server is fully ready
     @Published var isAnalyzing = false
     @Published var lastAnalysis: AnalysisResult?
     @Published var analysisHistory: [String: AnalysisResult] = [:]
+    @Published var serverStartupMessage = "Starting LLM server..."
     @AppStorage("userFocus") var userFocus: String = "Writing code"  // Default focus
     
     private let serverURL = "http://127.0.0.1:8765"  // Use IP instead of localhost to reduce warnings
@@ -58,11 +60,38 @@ class LLMAnalysisManager: ObservableObject {
     
     init() {
         startLLMServer()
-        // Delay initial health check to give server time to start
+        // Start health check monitoring
         Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            await checkServerHealth()
+            await waitForServerReady()
         }
+    }
+    
+    func waitForServerReady() async {
+        serverStartupMessage = "Starting LLM server..."
+        
+        // Initial delay to let server start
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        
+        // Retry with exponential backoff
+        for attempt in 1...5 {
+            serverStartupMessage = "Checking LLM server (attempt \(attempt)/5)..."
+            await checkServerHealth()
+            
+            if isServerRunning {
+                serverStartupMessage = "LLM server ready!"
+                isServerReady = true
+                print("[LLM] ✅ Server is ready after \(attempt) attempt(s)")
+                return
+            }
+            
+            // Exponential backoff: 2s, 4s, 6s, 8s, 10s
+            let delaySeconds = UInt64(attempt * 2)
+            serverStartupMessage = "Waiting \(delaySeconds)s before retry..."
+            try? await Task.sleep(nanoseconds: delaySeconds * 1_000_000_000)
+        }
+        
+        serverStartupMessage = "LLM server failed to start"
+        print("[LLM] ❌ Server failed to start after 5 attempts")
     }
     
     deinit {
@@ -120,12 +149,7 @@ class LLMAnalysisManager: ObservableObject {
                 Thread.sleep(forTimeInterval: 4.0)
                 
                 Task { @MainActor in
-                    // Retry health check with exponential backoff
-                    for attempt in 1...3 {
-                        self.checkServerHealth()
-                        if self.isServerRunning { break }
-                        try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
-                    }
+                    print("[LLM] Server process started, waiting for health check...")
                 }
             } catch {
                 print("[LLM] ERROR: Failed to start LLM server: \(error)")
@@ -172,6 +196,12 @@ class LLMAnalysisManager: ObservableObject {
     func analyzeScreenshot(ocrText: String, appName: String, windowTitle: String?) async throws -> AnalysisResult {
         print("\n[LLM] 🧠 === LLM Analysis Pipeline ===")
         print("[LLM] 🧠 Step A: Checking server status...")
+        
+        // Wait for server to be ready if it's still starting
+        if !isServerReady {
+            print("[LLM] ⏳ Server still starting, waiting...")
+            await waitForServerReady()
+        }
         
         guard isServerRunning else {
             print("[LLM] ❌ Server not running!")

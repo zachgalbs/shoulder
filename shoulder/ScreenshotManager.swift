@@ -33,12 +33,65 @@ class ScreenshotManager: ObservableObject {
     private var llmAnalysisManager: LLMAnalysisManager?
     @Published var lastOCRText: String?
     
+    // Queue for pending analyses when LLM server isn't ready
+    private struct PendingAnalysis {
+        let ocrText: String
+        let appName: String
+        let timestamp: Date
+    }
+    private var pendingAnalyses: [PendingAnalysis] = []
+    
     init() {
         setupDirectories()
     }
     
     func setLLMManager(_ manager: LLMAnalysisManager) {
         self.llmAnalysisManager = manager
+        
+        // Monitor when server becomes ready to process queued analyses
+        Task {
+            await monitorServerReadiness()
+        }
+    }
+    
+    @MainActor
+    private func monitorServerReadiness() async {
+        guard let llmManager = llmAnalysisManager else { return }
+        
+        // Wait for server to be ready
+        while !llmManager.isServerReady {
+            try? await Task.sleep(nanoseconds: 500_000_000) // Check every 0.5s
+        }
+        
+        // Process any pending analyses
+        await processPendingAnalyses()
+    }
+    
+    @MainActor
+    private func processPendingAnalyses() async {
+        guard let llmManager = llmAnalysisManager,
+              !pendingAnalyses.isEmpty else { return }
+        
+        print("[Screenshot] 📦 Processing \(pendingAnalyses.count) queued analyses...")
+        
+        for pending in pendingAnalyses {
+            do {
+                let result = try await llmManager.analyzeScreenshot(
+                    ocrText: pending.ocrText,
+                    appName: pending.appName,
+                    windowTitle: nil
+                )
+                
+                print("[AI] ✅ Queued analysis processed:")
+                print("[AI] \(result.is_valid ? "✅" : "❌") Valid: \(result.is_valid)")
+                print("[AI] 📊 Activity: \(result.detected_activity)")
+                
+            } catch {
+                print("[AI] ❌ Failed to process queued analysis: \(error)")
+            }
+        }
+        
+        pendingAnalyses.removeAll()
     }
     
     deinit {
@@ -378,12 +431,25 @@ class ScreenshotManager: ObservableObject {
         return result
     }
     
+    @MainActor
     private func triggerLLMAnalysis(ocrText: String, with llmManager: LLMAnalysisManager) {
         // Get current app context (simplified for demo)
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
         
         print("[AI] 🤖 Step 15: Preparing to analyze activity from: \(appName)")
         print("[AI] 🤖 OCR text length: \(ocrText.count) characters")
+        
+        // Check if server is ready
+        if !llmManager.isServerReady {
+            print("[AI] ⏳ LLM server not ready yet, queuing analysis...")
+            pendingAnalyses.append(PendingAnalysis(
+                ocrText: ocrText,
+                appName: appName,
+                timestamp: Date()
+            ))
+            print("[AI] 📦 Analysis queued (\(pendingAnalyses.count) in queue)")
+            return
+        }
         
         Task {
             do {
@@ -402,6 +468,16 @@ class ScreenshotManager: ObservableObject {
                 
             } catch {
                 print("[AI] ❌ Analysis failed: \(error)")
+                
+                // If it failed due to server not running, queue it
+                if case LLMAnalysisError.serverNotRunning = error {
+                    print("[AI] 📦 Queuing analysis for retry...")
+                    pendingAnalyses.append(PendingAnalysis(
+                        ocrText: ocrText,
+                        appName: appName,
+                        timestamp: Date()
+                    ))
+                }
             }
         }
     }
