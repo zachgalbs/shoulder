@@ -275,6 +275,7 @@ struct DetailRow: View {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject var llmAnalysisManager: LLMAnalysisManager
     @AppStorage("screenshotInterval") private var screenshotInterval = 60
     @AppStorage("enableOCR") private var enableOCR = true
     @AppStorage("enableAIAnalysis") private var enableAIAnalysis = false
@@ -297,6 +298,19 @@ struct SettingsView: View {
                 Toggle("Enable OCR Processing", isOn: $enableOCR)
                 Toggle("Enable AI Analysis", isOn: $enableAIAnalysis)
                     .disabled(!enableOCR)
+                
+                if enableAIAnalysis {
+                    HStack {
+                        Text("Focus:")
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        TextField("What are you focusing on?", text: $llmAnalysisManager.userFocus)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    Text("The AI will check if your activities match this focus")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textTertiary)
+                }
             }
             
             Section("Storage") {

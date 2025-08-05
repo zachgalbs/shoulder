@@ -80,7 +80,7 @@ class ScreenshotManager: ObservableObject {
     
     private func captureScreenshot() {
         guard let baseURL = baseDirectoryURL else {
-            print("Screenshot directory not available")
+            print("[Screenshot] ❌ Directory not available")
             return
         }
         
@@ -95,7 +95,7 @@ class ScreenshotManager: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: todayFolderURL, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            print("Failed to create today's folder: \(error)")
+            print("[Screenshot] ❌ Failed to create today's folder: \(error)")
             return
         }
         
@@ -106,9 +106,14 @@ class ScreenshotManager: ObservableObject {
         let filename = "screenshot-\(timeString).png"
         let fileURL = todayFolderURL.appendingPathComponent(filename)
         
+        print("\n[Screenshot] 📸 === Starting Screenshot Pipeline ===")
+        print("[Screenshot] 📸 Step 1: Capturing screen at \(Date())")
+        
         // Capture screenshot using CGDisplayCreateImage
         if let displayID = CGMainDisplayID() as CGDirectDisplayID?,
            let image = CGDisplayCreateImage(displayID) {
+            
+            print("[Screenshot] 📸 Step 2: Screen captured (\(image.width)x\(image.height) pixels)")
             
             // Convert to NSImage and save as PNG
             let nsImage = NSImage(cgImage: image, size: .zero)
@@ -118,20 +123,23 @@ class ScreenshotManager: ObservableObject {
                 
                 do {
                     try pngData.write(to: fileURL)
-                    print("Screenshot saved: \(filename)")
+                    print("[Screenshot] 📸 Step 3: Saved to: \(filename)")
+                    print("[Screenshot] 📸 Step 4: Starting OCR processing...")
                     
                     // Process OCR asynchronously
                     processOCR(for: image, at: todayFolderURL, filename: timeString)
                 } catch {
-                    print("Failed to save screenshot: \(error)")
+                    print("[Screenshot] ❌ Failed to save: \(error)")
                 }
             }
         } else {
-            print("Failed to capture screenshot")
+            print("[Screenshot] ❌ Failed to capture screen")
         }
     }
     
     private func processOCR(for cgImage: CGImage, at folderURL: URL, filename: String) {
+        print("[OCR] 🔍 Step 5: Initializing Vision OCR request")
+        
         let request = VNRecognizeTextRequest { [weak self] request, error in
             self?.handleOCRResult(request: request, error: error, folderURL: folderURL, filename: filename)
         }
@@ -140,31 +148,40 @@ class ScreenshotManager: ObservableObject {
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         
+        print("[OCR] 🔍 Step 6: OCR configured (accurate mode, language correction enabled)")
+        
         // Process the image
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         
         DispatchQueue.global(qos: .utility).async {
             do {
+                print("[OCR] 🔍 Step 7: Performing OCR analysis...")
+                let startTime = Date()
                 try handler.perform([request])
+                let elapsed = Date().timeIntervalSince(startTime)
+                print("[OCR] 🔍 Step 8: OCR completed in \(String(format: "%.2f", elapsed)) seconds")
             } catch {
-                print("OCR processing failed: \(error)")
+                print("[OCR] ❌ Processing failed: \(error)")
             }
         }
     }
     
     private func handleOCRResult(request: VNRequest, error: Error?, folderURL: URL, filename: String) {
         guard error == nil else {
-            print("OCR request failed: \(error!)")
+            print("[OCR] ❌ Request failed: \(error!)")
             return
         }
         
         guard let observations = request.results as? [VNRecognizedTextObservation] else {
-            print("No text observations found")
+            print("[OCR] ⚠️ No text observations found")
             return
         }
         
+        print("[OCR] 🔍 Step 9: Found \(observations.count) text observations")
+        
         // Extract text with spatial information
         var spatialTexts: [SpatialText] = []
+        var debugTexts: [String] = []
         
         for observation in observations {
             guard let topCandidate = observation.topCandidates(1).first else { continue }
@@ -174,9 +191,20 @@ class ScreenshotManager: ObservableObject {
                 boundingBox: observation.boundingBox
             )
             spatialTexts.append(spatialText)
+            
+            // Collect first 5 text snippets for debugging
+            if debugTexts.count < 5 {
+                debugTexts.append("\"\(topCandidate.string)\" (conf: \(String(format: "%.0f%%", topCandidate.confidence * 100)))")
+            }
+        }
+        
+        print("[OCR] 🔍 Step 10: Extracted \(spatialTexts.count) text elements")
+        if !debugTexts.isEmpty {
+            print("[OCR] 🔍 Sample text: \(debugTexts.joined(separator: ", "))")
         }
         
         // Create LLM-optimized markdown content
+        print("[OCR] 📝 Step 11: Creating markdown with \(spatialTexts.count) text elements")
         let markdownContent = createOptimizedMarkdownContent(
             spatialTexts: spatialTexts,
             timestamp: filename
@@ -188,14 +216,23 @@ class ScreenshotManager: ObservableObject {
         
         do {
             try markdownContent.write(to: markdownURL, atomically: true, encoding: .utf8)
-            print("OCR text saved: \(markdownFilename)")
+            print("[OCR] 📝 Step 12: Markdown saved: \(markdownFilename)")
+            print("[OCR] 📝 File size: \(markdownContent.count) characters")
             
             // Store the OCR text for potential LLM analysis
             DispatchQueue.main.async { [weak self] in
-                self?.lastOCRText = spatialTexts.map { $0.text }.joined(separator: " ")
+                let ocrText = spatialTexts.map { $0.text }.joined(separator: " ")
+                self?.lastOCRText = ocrText
+                print("[OCR] 💾 Step 13: OCR text stored for LLM (\(ocrText.prefix(100))...)")
+                
+                // Trigger LLM analysis if manager is available
+                if let llmManager = self?.llmAnalysisManager {
+                    print("[AI] 🤖 Step 14: Triggering AI analysis pipeline...")
+                    self?.triggerLLMAnalysis(ocrText: ocrText, with: llmManager)
+                }
             }
         } catch {
-            print("Failed to save OCR text: \(error)")
+            print("[OCR] ❌ Failed to save markdown: \(error)")
         }
     }
     
@@ -339,5 +376,33 @@ class ScreenshotManager: ObservableObject {
         }
         
         return result
+    }
+    
+    private func triggerLLMAnalysis(ocrText: String, with llmManager: LLMAnalysisManager) {
+        // Get current app context (simplified for demo)
+        let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
+        
+        print("[AI] 🤖 Step 15: Preparing to analyze activity from: \(appName)")
+        print("[AI] 🤖 OCR text length: \(ocrText.count) characters")
+        
+        Task {
+            do {
+                print("[AI] 🤖 Step 16: Sending to LLM server...")
+                let result = try await llmManager.analyzeScreenshot(
+                    ocrText: ocrText,
+                    appName: appName,
+                    windowTitle: nil
+                )
+                
+                print("[AI] ✅ Step 17: Analysis complete!")
+                print("[AI] \(result.is_valid ? "✅" : "❌") Valid: \(result.is_valid)")
+                print("[AI] 📊 Activity: \(result.detected_activity)")
+                print("[AI] 💭 Reason: \(result.explanation)")
+                print("[AI] 🎯 Confidence: \(Int(result.confidence * 100))%")
+                
+            } catch {
+                print("[AI] ❌ Analysis failed: \(error)")
+            }
+        }
     }
 }

@@ -183,8 +183,21 @@ struct DashboardView: View {
                 Spacer()
                 
                 if llmAnalysisManager.isAnalyzing {
-                    ProgressView()
-                        .scaleEffect(0.8)
+                    // Simple loading indicator instead of ProgressView
+                    HStack(spacing: 4) {
+                        ForEach(0..<3) { index in
+                            Circle()
+                                .fill(DesignSystem.Colors.accentBlue)
+                                .frame(width: 4, height: 4)
+                                .opacity(llmAnalysisManager.isAnalyzing ? 1.0 : 0.3)
+                                .animation(
+                                    .easeInOut(duration: 0.6)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.2),
+                                    value: llmAnalysisManager.isAnalyzing
+                                )
+                        }
+                    }
                 } else if let lastAnalysis = llmAnalysisManager.lastAnalysis {
                     Button(action: analyzeCurrentSession) {
                         Label("Analyze Now", systemImage: "arrow.clockwise")
@@ -197,37 +210,44 @@ struct DashboardView: View {
             
             if let analysis = llmAnalysisManager.lastAnalysis {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.small) {
-                    Text(analysis.summary)
-                        .font(.subheadline)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                    
-                    HStack(spacing: DesignSystem.Spacing.medium) {
-                        Label(analysis.category, systemImage: "tag.fill")
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.accentPurple)
+                    // Focus status
+                    HStack {
+                        Image(systemName: analysis.is_valid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundColor(analysis.is_valid ? DesignSystem.Colors.activeGreen : Color.red)
+                        Text(analysis.is_valid ? "On Focus" : "Off Focus")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(DesignSystem.Colors.textPrimary)
                         
-                        Label(String(format: "%.0f%% Productive", analysis.productivity_score * 100), 
-                              systemImage: "chart.line.uptrend.xyaxis")
+                        Spacer()
+                        
+                        Text("\(Int(analysis.confidence * 100))% confident")
                             .font(.caption)
-                            .foregroundColor(productivityColor(for: analysis.productivity_score))
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
                     }
                     
-                    if !analysis.key_activities.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Key Activities:")
-                                .font(.caption)
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            
-                            ForEach(analysis.key_activities.prefix(3), id: \.self) { activity in
-                                HStack(spacing: 4) {
-                                    Text("•")
-                                        .foregroundColor(DesignSystem.Colors.accentBlue)
-                                    Text(activity)
-                                        .font(.caption)
-                                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                                }
-                            }
-                        }
+                    // Current activity
+                    Text("Activity: \(analysis.detected_activity)")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    // Explanation
+                    Text(analysis.explanation)
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
+                    
+                    Divider()
+                    
+                    // Focus setting
+                    HStack {
+                        Text("Focus:")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        Text(llmAnalysisManager.userFocus)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(DesignSystem.Colors.accentPurple)
                     }
                 }
                 .padding(DesignSystem.Spacing.medium)
@@ -254,11 +274,20 @@ struct DashboardView: View {
     }
     
     private func analyzeCurrentSession() {
-        guard let activeSession = activeSession,
-              let ocrText = screenshotManager.lastOCRText else { return }
+        guard let ocrText = screenshotManager.lastOCRText else { return }
+        
+        let appName = activeSession?.appName ?? "Unknown"
         
         Task {
-            await llmAnalysisManager.analyzeSession(activeSession, ocrText: ocrText)
+            do {
+                _ = try await llmAnalysisManager.analyzeScreenshot(
+                    ocrText: ocrText,
+                    appName: appName,
+                    windowTitle: activeSession?.windowTitle
+                )
+            } catch {
+                print("[Dashboard] Analysis failed: \(error)")
+            }
         }
     }
     

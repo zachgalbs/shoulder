@@ -16,12 +16,11 @@ enum LLMAnalysisError: Error {
 }
 
 struct AnalysisResult: Codable {
-    let summary: String
-    let category: String
-    let productivity_score: Double
-    let key_activities: [String]
-    let suggestions: [String]?
-    let timestamp: Date
+    let is_valid: Bool  // True if activity matches focus
+    let explanation: String  // Why it's valid/invalid
+    let detected_activity: String  // What the user is actually doing
+    let confidence: Double  // How confident the model is (0-1)
+    let timestamp: String  // ISO8601 string from Python
 }
 
 struct AnalysisRequest: Codable {
@@ -33,7 +32,7 @@ struct AnalysisRequest: Codable {
 struct AnalysisContext: Codable {
     let app_name: String
     let window_title: String?
-    let duration_seconds: Int
+    let user_focus: String  // What the user wants to focus on
     let timestamp: Date
 }
 
@@ -43,15 +42,27 @@ class LLMAnalysisManager: ObservableObject {
     @Published var isAnalyzing = false
     @Published var lastAnalysis: AnalysisResult?
     @Published var analysisHistory: [String: AnalysisResult] = [:]
+    @AppStorage("userFocus") var userFocus: String = "Writing code"  // Default focus
     
-    private let serverURL = "http://localhost:8765"
+    private let serverURL = "http://127.0.0.1:8765"  // Use IP instead of localhost to reduce warnings
     private var serverProcess: Process?
     private let analysisQueue = DispatchQueue(label: "com.shoulder.llm.analysis", qos: .background)
     private var pendingAnalyses: [String: AnalysisRequest] = [:]
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 30
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
     
     init() {
         startLLMServer()
-        checkServerHealth()
+        // Delay initial health check to give server time to start
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            await checkServerHealth()
+        }
     }
     
     deinit {
@@ -105,10 +116,16 @@ class LLMAnalysisManager: ObservableObject {
                 self.serverProcess = process
                 print("[LLM] Server process started, PID: \(process.processIdentifier)")
                 
-                Thread.sleep(forTimeInterval: 3.0)
+                // Give server more time to start
+                Thread.sleep(forTimeInterval: 4.0)
                 
                 Task { @MainActor in
-                    self.checkServerHealth()
+                    // Retry health check with exponential backoff
+                    for attempt in 1...3 {
+                        self.checkServerHealth()
+                        if self.isServerRunning { break }
+                        try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+                    }
                 }
             } catch {
                 print("[LLM] ERROR: Failed to start LLM server: \(error)")
@@ -132,7 +149,7 @@ class LLMAnalysisManager: ObservableObject {
             print("[LLM] Checking server health at \(serverURL)/health")
             
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                let (data, response) = try await urlSession.data(from: url)
                 if let httpResponse = response as? HTTPURLResponse {
                     print("[LLM] Health check response: \(httpResponse.statusCode)")
                     if httpResponse.statusCode == 200 {
@@ -152,10 +169,16 @@ class LLMAnalysisManager: ObservableObject {
         }
     }
     
-    func analyzeScreenshot(ocrText: String, appName: String, windowTitle: String?, duration: TimeInterval) async throws -> AnalysisResult {
+    func analyzeScreenshot(ocrText: String, appName: String, windowTitle: String?) async throws -> AnalysisResult {
+        print("\n[LLM] 🧠 === LLM Analysis Pipeline ===")
+        print("[LLM] 🧠 Step A: Checking server status...")
+        
         guard isServerRunning else {
+            print("[LLM] ❌ Server not running!")
             throw LLMAnalysisError.serverNotRunning
         }
+        
+        print("[LLM] 🧠 Step B: Server is running, preparing request...")
         
         isAnalyzing = true
         defer { isAnalyzing = false }
@@ -163,13 +186,23 @@ class LLMAnalysisManager: ObservableObject {
         let context = AnalysisContext(
             app_name: appName,
             window_title: windowTitle,
-            duration_seconds: Int(duration),
+            user_focus: userFocus,
             timestamp: Date()
         )
         
-        let request = AnalysisRequest(text: ocrText, context: context)
+        // Prepare the request
+        let truncatedText = String(ocrText.prefix(2000)) // Limit to 2000 chars
+        print("[LLM] 🧠 Step C: Request context:")
+        print("[LLM]    - App: \(appName)")
+        print("[LLM]    - Window: \(windowTitle ?? "none")")
+        print("[LLM]    - User Focus: \(userFocus)")
+        print("[LLM]    - Text length: \(truncatedText.count) chars")
+        print("[LLM]    - Text preview: \(String(truncatedText.prefix(100)))...")
+        
+        let request = AnalysisRequest(text: truncatedText, context: context)
         
         guard let url = URL(string: "\(serverURL)/analyze") else {
+            print("[LLM] ❌ Invalid URL")
             throw LLMAnalysisError.invalidResponse
         }
         
@@ -180,18 +213,48 @@ class LLMAnalysisManager: ObservableObject {
         
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        urlRequest.httpBody = try encoder.encode(request)
+        let requestData = try encoder.encode(request)
+        urlRequest.httpBody = requestData
         
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        print("[LLM] 🧠 Step D: Sending POST to \(serverURL)/analyze")
+        print("[LLM]    - Request size: \(requestData.count) bytes")
+        print("[LLM]    - Model: \(request.model)")
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        let startTime = Date()
+        let (data, response) = try await urlSession.data(for: urlRequest)
+        let elapsed = Date().timeIntervalSince(startTime)
+        
+        print("[LLM] 🧠 Step E: Response received in \(String(format: "%.2f", elapsed))s")
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("[LLM] ❌ Invalid response type")
             throw LLMAnalysisError.invalidResponse
         }
+        
+        print("[LLM]    - Status code: \(httpResponse.statusCode)")
+        print("[LLM]    - Response size: \(data.count) bytes")
+        
+        guard httpResponse.statusCode == 200 else {
+            print("[LLM] ❌ Non-200 status: \(httpResponse.statusCode)")
+            if let errorText = String(data: data, encoding: .utf8) {
+                print("[LLM] ❌ Error: \(errorText)")
+            }
+            throw LLMAnalysisError.invalidResponse
+        }
+        
+        print("[LLM] 🧠 Step F: Decoding response...")
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let result = try decoder.decode(AnalysisResult.self, from: data)
+        
+        print("[LLM] 🧠 Step G: Analysis decoded successfully!")
+        print("[LLM] ✅ === Analysis Complete ===")
+        print("[LLM]    Focus: \(userFocus)")
+        print("[LLM]    Valid: \(result.is_valid ? "✅ YES" : "❌ NO")")
+        print("[LLM]    Activity: \(result.detected_activity)")
+        print("[LLM]    Explanation: \(result.explanation)")
+        print("[LLM]    Confidence: \(Int(result.confidence * 100))%")
         
         lastAnalysis = result
         analysisHistory[appName] = result
@@ -199,24 +262,6 @@ class LLMAnalysisManager: ObservableObject {
         return result
     }
     
-    func analyzeSession(_ session: Item, ocrText: String?) async {
-        guard let ocrText = ocrText, !ocrText.isEmpty else { return }
-        
-        do {
-            let result = try await analyzeScreenshot(
-                ocrText: ocrText,
-                appName: session.appName,
-                windowTitle: session.windowTitle,
-                duration: session.duration ?? 0
-            )
-            
-            await MainActor.run {
-                saveAnalysisResult(result, for: session)
-            }
-        } catch {
-            print("Analysis failed: \(error)")
-        }
-    }
     
     private func saveAnalysisResult(_ result: AnalysisResult, for session: Item) {
         let dateFormatter = DateFormatter()
@@ -247,43 +292,40 @@ class LLMAnalysisManager: ObservableObject {
         }
     }
     
-    func getProductivityInsights(for date: Date = Date()) -> ProductivityInsights {
+    func getFocusInsights(for date: Date = Date()) -> FocusInsights {
         let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: date)
         
         let relevantAnalyses = analysisHistory.values.filter { analysis in
-            calendar.isDate(analysis.timestamp, inSameDayAs: date)
+            // Parse ISO8601 timestamp string to Date
+            let formatter = ISO8601DateFormatter()
+            if let analysisDate = formatter.date(from: analysis.timestamp) {
+                return calendar.isDate(analysisDate, inSameDayAs: date)
+            }
+            return false
         }
         
-        let avgScore = relevantAnalyses.isEmpty ? 0.0 :
-            relevantAnalyses.map { $0.productivity_score }.reduce(0, +) / Double(relevantAnalyses.count)
+        let validCount = relevantAnalyses.filter { $0.is_valid }.count
+        let totalCount = relevantAnalyses.count
+        let focusPercentage = totalCount > 0 ? Double(validCount) / Double(totalCount) : 0.0
         
-        let categories = Dictionary(grouping: relevantAnalyses) { $0.category }
-            .mapValues { $0.count }
+        let recentActivities = relevantAnalyses.suffix(5).map { $0.detected_activity }
         
-        let topActivities = relevantAnalyses
-            .flatMap { $0.key_activities }
-            .reduce(into: [:]) { counts, activity in
-                counts[activity, default: 0] += 1
-            }
-            .sorted { $0.value > $1.value }
-            .prefix(5)
-            .map { $0.key }
-        
-        return ProductivityInsights(
-            averageScore: avgScore,
-            categoryBreakdown: categories,
-            topActivities: topActivities,
-            totalAnalyses: relevantAnalyses.count
+        return FocusInsights(
+            focusPercentage: focusPercentage,
+            validSessions: validCount,
+            totalSessions: totalCount,
+            currentFocus: userFocus,
+            recentActivities: recentActivities
         )
     }
 }
 
-struct ProductivityInsights {
-    let averageScore: Double
-    let categoryBreakdown: [String: Int]
-    let topActivities: [String]
-    let totalAnalyses: Int
+struct FocusInsights {
+    let focusPercentage: Double
+    let validSessions: Int
+    let totalSessions: Int
+    let currentFocus: String
+    let recentActivities: [String]
 }
 
 struct LLMStatusView: View {
@@ -291,13 +333,17 @@ struct LLMStatusView: View {
     
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.small) {
-            Image(systemName: llmManager.isServerRunning ? "brain" : "brain.slash")
+            Image(systemName: llmManager.isServerRunning ? "brain" : "brain.head.profile")
                 .foregroundColor(llmManager.isServerRunning ? DesignSystem.Colors.activeGreen : DesignSystem.Colors.textTertiary)
                 .font(.caption)
             
             if llmManager.isAnalyzing {
-                ProgressView()
-                    .scaleEffect(0.7)
+                // Replace ProgressView with a simple animated dot
+                Circle()
+                    .fill(DesignSystem.Colors.accentBlue)
+                    .frame(width: 6, height: 6)
+                    .opacity(llmManager.isAnalyzing ? 1.0 : 0.3)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: llmManager.isAnalyzing)
                 Text("Analyzing...")
                     .font(.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
