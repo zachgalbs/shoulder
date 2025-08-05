@@ -51,9 +51,9 @@ struct DesignSystem {
     }
     
     struct Animation {
-        static let quick = SwiftUI.Animation.easeInOut(duration: 0.2)
-        static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
-        static let smooth = SwiftUI.Animation.spring(response: 0.4, dampingFraction: 0.8)
+        static let quick = SwiftUI.Animation.linear(duration: 0)
+        static let standard = SwiftUI.Animation.linear(duration: 0)
+        static let smooth = SwiftUI.Animation.linear(duration: 0)
     }
     
     struct Shadow {
@@ -236,29 +236,12 @@ struct StatCardView: View {
 }
 
 struct PulsingDot: View {
-    @State private var isAnimating = false
     let color: Color
     let size: CGFloat
     
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(color.opacity(0.3))
-                .frame(width: size * 2, height: size * 2)
-                .scaleEffect(isAnimating ? 1.5 : 1.0)
-                .opacity(isAnimating ? 0 : 1)
-            
-            Circle()
-                .fill(color)
-                .frame(width: size, height: size)
-        }
-        .onAppear {
-            withAnimation(
-                SwiftUI.Animation.easeInOut(duration: 1.5)
-                    .repeatForever(autoreverses: false)
-            ) {
-                isAnimating = true
-            }
-        }
+        Circle()
+            .fill(color)
+            .frame(width: size, height: size)
     }
 }

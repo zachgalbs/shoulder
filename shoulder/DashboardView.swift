@@ -190,12 +190,6 @@ struct DashboardView: View {
                                 .fill(DesignSystem.Colors.accentBlue)
                                 .frame(width: 4, height: 4)
                                 .opacity(llmAnalysisManager.isAnalyzing ? 1.0 : 0.3)
-                                .animation(
-                                    .easeInOut(duration: 0.6)
-                                    .repeatForever(autoreverses: true)
-                                    .delay(Double(index) * 0.2),
-                                    value: llmAnalysisManager.isAnalyzing
-                                )
                         }
                     }
                 } else if let lastAnalysis = llmAnalysisManager.lastAnalysis {

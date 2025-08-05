@@ -123,9 +123,7 @@ struct SessionsListView: View {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 if let item = itemToDelete {
-                    withAnimation {
-                        modelContext.delete(item)
-                    }
+                    modelContext.delete(item)
                 }
             }
         } message: {
@@ -164,9 +162,7 @@ struct SessionsListView: View {
                             icon: option.icon,
                             isSelected: selectedFilter == option
                         ) {
-                            withAnimation(DesignSystem.Animation.quick) {
-                                selectedFilter = option
-                            }
+                            selectedFilter = option
                         }
                     }
                 }
@@ -320,7 +316,6 @@ struct SessionCardView: View {
                     .stroke(item.endTime == nil ? DesignSystem.Colors.activeGreen.opacity(0.3) : Color.clear, lineWidth: 1)
             )
             .scaleEffect(isHovered ? 1.02 : 1.0)
-            .animation(DesignSystem.Animation.quick, value: isHovered)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
