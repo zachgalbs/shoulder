@@ -27,7 +27,7 @@ struct AnalysisResult: Codable {
 struct AnalysisRequest: Codable {
     let text: String
     let context: AnalysisContext
-    let model: String = "dolphin-mistral:latest"
+    var model: String = "dolphin-mistral:latest"
 }
 
 struct AnalysisContext: Codable {
