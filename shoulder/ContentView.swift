@@ -281,6 +281,7 @@ struct SettingsView: View {
     @AppStorage("screenshotInterval") private var screenshotInterval = 60
     @AppStorage("enableOCR") private var enableOCR = true
     @AppStorage("enableAIAnalysis") private var enableAIAnalysis = false
+    @State private var showFocusSaved = false
     
     var body: some View {
         Form {
@@ -302,16 +303,33 @@ struct SettingsView: View {
                     .disabled(!enableOCR)
                 
                 if enableAIAnalysis {
-                    HStack {
-                        Text("Focus:")
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                        TextField("What are you focusing on?", text: $llmAnalysisManager.userFocus)
-                            .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Focus:")
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                            TextField("What are you focusing on?", text: $llmAnalysisManager.userFocus)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    // Force save to UserDefaults
+                                    UserDefaults.standard.set(llmAnalysisManager.userFocus, forKey: "userFocus")
+                                    showFocusSaved = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        showFocusSaved = false
+                                    }
+                                }
+                        }
+                        
+                        if showFocusSaved {
+                            Text("✓ Focus saved: \"\(llmAnalysisManager.userFocus)\"")
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.activeGreen)
+                                .transition(.opacity)
+                        }
+                        
+                        Text("The AI will check if your activities match this focus")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.textTertiary)
                     }
-                    
-                    Text("The AI will check if your activities match this focus")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.textTertiary)
                 }
             }
             

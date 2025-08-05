@@ -175,7 +175,6 @@
 					};
 					6876FBB62E3E9FAE008033D5 = {
 						CreatedOnToolsVersion = 16.1;
-						TestTargetID = 6876FB992E3E9FAD008033D5;
 					};
 				};
 			};
@@ -484,9 +483,9 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zach.shoulderUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE = "";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = shoulder;
 			};
 			name = Debug;
 		};
@@ -500,9 +499,9 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zach.shoulderUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE = "";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = shoulder;
 			};
 			name = Release;
 		};
