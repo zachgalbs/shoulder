@@ -343,7 +343,6 @@ struct LLMStatusView: View {
                     .fill(DesignSystem.Colors.accentBlue)
                     .frame(width: 6, height: 6)
                     .opacity(llmManager.isAnalyzing ? 1.0 : 0.3)
-                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: llmManager.isAnalyzing)
                 Text("Analyzing...")
                     .font(.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)

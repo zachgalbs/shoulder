@@ -67,8 +67,10 @@ struct ContentView: View {
                         }
                     }
                     .tag(tab)
+                    .accessibilityIdentifier("\(tab.rawValue)NavigationLink")
                 }
             }
+            .accessibilityIdentifier("SidebarList")
             .listStyle(.sidebar)
             
             Spacer()
@@ -95,10 +97,12 @@ struct ContentView: View {
                     Text("Shoulder")
                         .font(.title2)
                         .fontWeight(.bold)
+                        .accessibilityIdentifier("AppTitle")
                     
                     Text("Activity Monitor")
                         .font(.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
+                        .accessibilityIdentifier("AppSubtitle")
                 }
                 
                 Spacer()
@@ -136,10 +140,8 @@ struct ContentView: View {
     }
 
     private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+        for index in offsets {
+            modelContext.delete(items[index])
         }
     }
 }
