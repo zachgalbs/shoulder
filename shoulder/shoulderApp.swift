@@ -12,7 +12,7 @@ import SwiftData
 struct shoulderApp: App {
     @StateObject private var screenMonitor = ScreenVisibilityMonitor()
     @StateObject private var screenshotManager = ScreenshotManager()
-    @StateObject private var llmAnalysisManager = LLMAnalysisManager()
+    @StateObject private var mlxLLMManager = MLXLLMManager()
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -31,11 +31,11 @@ struct shoulderApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(screenMonitor)
-                .environmentObject(llmAnalysisManager)
+                .environmentObject(mlxLLMManager)
                 .environmentObject(screenshotManager)
                 .onAppear {
                     screenMonitor.setModelContext(sharedModelContainer.mainContext)
-                    screenshotManager.setLLMManager(llmAnalysisManager)
+                    screenshotManager.setMLXLLMManager(mlxLLMManager)
                     screenshotManager.startCapturing()
                 }
         }

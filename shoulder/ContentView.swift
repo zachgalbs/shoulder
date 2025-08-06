@@ -12,7 +12,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
-    @EnvironmentObject var llmAnalysisManager: LLMAnalysisManager
+    @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @State private var selectedTab: Tab = .dashboard
     
     enum Tab: String, CaseIterable {
@@ -127,7 +127,7 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                LLMStatusView(llmManager: llmAnalysisManager)
+                MLXStatusView(mlxManager: mlxLLMManager)
                 
                 Spacer()
                 
@@ -277,7 +277,7 @@ struct DetailRow: View {
 }
 
 struct SettingsView: View {
-    @EnvironmentObject var llmAnalysisManager: LLMAnalysisManager
+    @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @AppStorage("screenshotInterval") private var screenshotInterval = 60
     @AppStorage("enableOCR") private var enableOCR = true
     @AppStorage("enableAIAnalysis") private var enableAIAnalysis = false
@@ -307,11 +307,11 @@ struct SettingsView: View {
                         HStack {
                             Text("Focus:")
                                 .foregroundColor(DesignSystem.Colors.textSecondary)
-                            TextField("What are you focusing on?", text: $llmAnalysisManager.userFocus)
+                            TextField("What are you focusing on?", text: $mlxLLMManager.userFocus)
                                 .textFieldStyle(.roundedBorder)
                                 .onSubmit {
                                     // Force save to UserDefaults
-                                    UserDefaults.standard.set(llmAnalysisManager.userFocus, forKey: "userFocus")
+                                    UserDefaults.standard.set(mlxLLMManager.userFocus, forKey: "userFocus")
                                     showFocusSaved = true
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                                         showFocusSaved = false
@@ -320,7 +320,7 @@ struct SettingsView: View {
                         }
                         
                         if showFocusSaved {
-                            Text("✓ Focus saved: \"\(llmAnalysisManager.userFocus)\"")
+                            Text("✓ Focus saved: \"\(mlxLLMManager.userFocus)\"")
                                 .font(.caption)
                                 .foregroundColor(DesignSystem.Colors.activeGreen)
                                 .transition(.opacity)

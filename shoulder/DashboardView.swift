@@ -11,7 +11,7 @@ import SwiftData
 struct DashboardView: View {
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
-    @EnvironmentObject var llmAnalysisManager: LLMAnalysisManager
+    @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @EnvironmentObject var screenshotManager: ScreenshotManager
     
     private var activeSession: Item? {
@@ -34,7 +34,7 @@ struct DashboardView: View {
                 headerSection
                 llmServerStatus
                 todaysSummary
-                if llmAnalysisManager.isServerRunning {
+                if mlxLLMManager.isModelLoaded {
                     aiInsightsSection
                 }
                 activeSessionCard
@@ -86,12 +86,12 @@ struct DashboardView: View {
     
     private var llmServerStatus: some View {
         HStack {
-            if !llmAnalysisManager.isServerReady {
+            if !mlxLLMManager.isModelReady {
                 // Server is starting
                 HStack(spacing: DesignSystem.Spacing.small) {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text(llmAnalysisManager.serverStartupMessage)
+                    Text(mlxLLMManager.modelLoadingMessage)
                         .font(.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
@@ -105,7 +105,7 @@ struct DashboardView: View {
                     RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
                         .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
-            } else if llmAnalysisManager.isServerRunning {
+            } else if mlxLLMManager.isModelLoaded {
                 // Server is ready
                 HStack(spacing: DesignSystem.Spacing.small) {
                     Image(systemName: "checkmark.circle.fill")
@@ -241,17 +241,17 @@ struct DashboardView: View {
                 
                 Spacer()
                 
-                if llmAnalysisManager.isAnalyzing {
+                if mlxLLMManager.isAnalyzing {
                     // Simple loading indicator instead of ProgressView
                     HStack(spacing: 4) {
                         ForEach(0..<3) { index in
                             Circle()
                                 .fill(DesignSystem.Colors.accentBlue)
                                 .frame(width: 4, height: 4)
-                                .opacity(llmAnalysisManager.isAnalyzing ? 1.0 : 0.3)
+                                .opacity(mlxLLMManager.isAnalyzing ? 1.0 : 0.3)
                         }
                     }
-                } else if let lastAnalysis = llmAnalysisManager.lastAnalysis {
+                } else if let lastAnalysis = mlxLLMManager.lastAnalysis {
                     Button(action: analyzeCurrentSession) {
                         Label("Analyze Now", systemImage: "arrow.clockwise")
                             .font(.caption)
@@ -261,7 +261,7 @@ struct DashboardView: View {
                 }
             }
             
-            if let analysis = llmAnalysisManager.lastAnalysis {
+            if let analysis = mlxLLMManager.lastAnalysis {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.small) {
                     // Focus status
                     HStack {
@@ -297,7 +297,7 @@ struct DashboardView: View {
                         Text("Focus:")
                             .font(.caption)
                             .foregroundColor(DesignSystem.Colors.textSecondary)
-                        Text(llmAnalysisManager.userFocus)
+                        Text(mlxLLMManager.userFocus)
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(DesignSystem.Colors.accentPurple)
@@ -333,7 +333,7 @@ struct DashboardView: View {
         
         Task {
             do {
-                _ = try await llmAnalysisManager.analyzeScreenshot(
+                _ = try await mlxLLMManager.analyzeScreenshot(
                     ocrText: ocrText,
                     appName: appName,
                     windowTitle: activeSession?.windowTitle
