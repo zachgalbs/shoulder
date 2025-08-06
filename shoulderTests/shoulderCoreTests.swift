@@ -50,7 +50,7 @@ struct shoulderCoreTests {
     @Test("LLM manager handles focus changes")
     @MainActor
     func testFocusManagement() {
-        let manager = LLMAnalysisManager()
+        let manager = MLXLLMManager()
         
         // Test basic focus functionality
         manager.userFocus = "Writing tests"
@@ -58,7 +58,7 @@ struct shoulderCoreTests {
         
         // Verify analysis state
         #expect(manager.isAnalyzing == false)
-        #expect(manager.isServerRunning == false)
+        #expect(manager.isModelLoaded == false)
     }
     
     @Test("Complete app workflow")
@@ -74,8 +74,8 @@ struct shoulderCoreTests {
         monitor.setModelContext(context)
         
         let screenshotManager = ScreenshotManager()
-        let llmManager = LLMAnalysisManager()
-        screenshotManager.setLLMManager(llmManager)
+        let mlxLLMManager = MLXLLMManager()
+        screenshotManager.setMLXLLMManager(mlxLLMManager)
         
         // Create a session
         let session = Item(timestamp: Date(), appName: "Xcode", windowTitle: "shoulder.xcodeproj")
@@ -85,7 +85,7 @@ struct shoulderCoreTests {
         // Verify components are connected
         #expect(monitor != nil)
         #expect(screenshotManager != nil)
-        #expect(llmManager != nil)
+        #expect(mlxLLMManager != nil)
         
         // Verify session was saved
         let items = try context.fetch(FetchDescriptor<Item>())

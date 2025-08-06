@@ -30,7 +30,7 @@ class ScreenshotManager: ObservableObject {
     private var timer: Timer?
     private let captureInterval: TimeInterval = 60.0 // 1 minute
     private var baseDirectoryURL: URL?
-    private var llmAnalysisManager: LLMAnalysisManager?
+    private var mlxLLMManager: MLXLLMManager?
     @Published var lastOCRText: String?
     
     // Queue for pending analyses when LLM server isn't ready
@@ -45,8 +45,8 @@ class ScreenshotManager: ObservableObject {
         setupDirectories()
     }
     
-    func setLLMManager(_ manager: LLMAnalysisManager) {
-        self.llmAnalysisManager = manager
+    func setMLXLLMManager(_ manager: MLXLLMManager) {
+        self.mlxLLMManager = manager
         
         // Monitor when server becomes ready to process queued analyses
         Task {
@@ -56,10 +56,10 @@ class ScreenshotManager: ObservableObject {
     
     @MainActor
     private func monitorServerReadiness() async {
-        guard let llmManager = llmAnalysisManager else { return }
+        guard let mlxManager = mlxLLMManager else { return }
         
-        // Wait for server to be ready
-        while !llmManager.isServerReady {
+        // Wait for model to be ready
+        while !mlxManager.isModelReady {
             try? await Task.sleep(nanoseconds: 500_000_000) // Check every 0.5s
         }
         
@@ -69,14 +69,14 @@ class ScreenshotManager: ObservableObject {
     
     @MainActor
     private func processPendingAnalyses() async {
-        guard let llmManager = llmAnalysisManager,
+        guard let mlxManager = mlxLLMManager,
               !pendingAnalyses.isEmpty else { return }
         
         print("[Screenshot] 📦 Processing \(pendingAnalyses.count) queued analyses...")
         
         for pending in pendingAnalyses {
             do {
-                let result = try await llmManager.analyzeScreenshot(
+                let result = try await mlxManager.analyzeScreenshot(
                     ocrText: pending.ocrText,
                     appName: pending.appName,
                     windowTitle: nil
@@ -278,10 +278,10 @@ class ScreenshotManager: ObservableObject {
                 self?.lastOCRText = ocrText
                 print("[OCR] 💾 Step 13: OCR text stored for LLM (\(ocrText.prefix(100))...)")
                 
-                // Trigger LLM analysis if manager is available
-                if let llmManager = self?.llmAnalysisManager {
+                // Trigger MLX analysis if manager is available
+                if let mlxManager = self?.mlxLLMManager {
                     print("[AI] 🤖 Step 14: Triggering AI analysis pipeline...")
-                    self?.triggerLLMAnalysis(ocrText: ocrText, with: llmManager)
+                    self?.triggerMLXAnalysis(ocrText: ocrText, with: mlxManager)
                 }
             }
         } catch {
@@ -432,16 +432,16 @@ class ScreenshotManager: ObservableObject {
     }
     
     @MainActor
-    private func triggerLLMAnalysis(ocrText: String, with llmManager: LLMAnalysisManager) {
+    private func triggerMLXAnalysis(ocrText: String, with mlxManager: MLXLLMManager) {
         // Get current app context (simplified for demo)
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
         
         print("[AI] 🤖 Step 15: Preparing to analyze activity from: \(appName)")
         print("[AI] 🤖 OCR text length: \(ocrText.count) characters")
         
-        // Check if server is ready
-        if !llmManager.isServerReady {
-            print("[AI] ⏳ LLM server not ready yet, queuing analysis...")
+        // Check if model is ready
+        if !mlxManager.isModelReady {
+            print("[AI] ⏳ MLX model not ready yet, queuing analysis...")
             pendingAnalyses.append(PendingAnalysis(
                 ocrText: ocrText,
                 appName: appName,
@@ -453,8 +453,8 @@ class ScreenshotManager: ObservableObject {
         
         Task {
             do {
-                print("[AI] 🤖 Step 16: Sending to LLM server...")
-                let result = try await llmManager.analyzeScreenshot(
+                print("[AI] 🤖 Step 16: Processing with MLX model...")
+                let result = try await mlxManager.analyzeScreenshot(
                     ocrText: ocrText,
                     appName: appName,
                     windowTitle: nil
@@ -469,8 +469,8 @@ class ScreenshotManager: ObservableObject {
             } catch {
                 print("[AI] ❌ Analysis failed: \(error)")
                 
-                // If it failed due to server not running, queue it
-                if case LLMAnalysisError.serverNotRunning = error {
+                // If it failed due to model not loaded, queue it
+                if case MLXLLMError.modelNotLoaded = error {
                     print("[AI] 📦 Queuing analysis for retry...")
                     pendingAnalyses.append(PendingAnalysis(
                         ocrText: ocrText,

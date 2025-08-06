@@ -21,9 +21,9 @@ struct ScreenshotManagerTests {
     
     @Test func testLLMManagerSetting() async throws {
         let manager = ScreenshotManager()
-        let llmManager = LLMAnalysisManager()
+        let mlxLLMManager = MLXLLMManager()
         
-        manager.setLLMManager(llmManager)
+        manager.setMLXLLMManager(mlxLLMManager)
         
         // LLM manager is set internally
         #expect(manager != nil)
