@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 @main
 struct shoulderApp: App {
@@ -37,6 +38,13 @@ struct shoulderApp: App {
                     screenMonitor.setModelContext(sharedModelContainer.mainContext)
                     screenshotManager.setMLXLLMManager(mlxLLMManager)
                     screenshotManager.startCapturing()
+                    
+                    // Request notification permissions for blocking alerts
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+                        if granted {
+                            print("Notification permissions granted")
+                        }
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)

@@ -49,6 +49,15 @@ class ScreenVisibilityMonitor: ObservableObject {
     @objc private func applicationDidActivate(_ notification: Notification) {
         if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
            let appName = app.localizedName {
+            
+            // Check if this application should be blocked
+            Task { @MainActor in
+                if ApplicationBlockingManager.shared.shouldBlockApplication(appName) {
+                    await ApplicationBlockingManager.shared.blockApplicationIfNeeded(appName: appName)
+                    return
+                }
+            }
+            
             endCurrentSession()
             startSession(for: appName)
         }

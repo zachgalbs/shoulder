@@ -333,6 +333,22 @@ struct SettingsView: View {
                 }
             }
             
+            Section("Application Blocking") {
+                NavigationLink(destination: BlockingSettingsView()) {
+                    HStack {
+                        Image(systemName: "xmark.shield.fill")
+                            .foregroundColor(.red)
+                        Text("Blocking Settings")
+                        Spacer()
+                        if ApplicationBlockingManager.shared.isBlockingEnabled {
+                            Text("Enabled")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+            }
+            
             Section("Storage") {
                 HStack {
                     Text("Screenshot Location")
