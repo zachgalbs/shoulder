@@ -225,6 +225,33 @@ struct DashboardView: View {
     
     private var aiInsightsSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.medium) {
+            // Blocking Status Indicator
+            if ApplicationBlockingManager.shared.isBlockingEnabled {
+                HStack {
+                    Image(systemName: ApplicationBlockingManager.shared.focusModeActive ? "lock.shield.fill" : "shield.fill")
+                        .foregroundColor(ApplicationBlockingManager.shared.focusModeActive ? .orange : .blue)
+                    
+                    Text(ApplicationBlockingManager.shared.focusModeActive ? "Focus Mode Active" : "Blocking Enabled")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    
+                    Spacer()
+                    
+                    let stats = ApplicationBlockingManager.shared.getBlockingStatistics()
+                    if stats.todayBlocked > 0 {
+                        Text("\(stats.todayBlocked) blocked today")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(ApplicationBlockingManager.shared.focusModeActive ? 
+                              Color.orange.opacity(0.1) : Color.blue.opacity(0.1))
+                )
+            }
+            
             HStack {
                 Image(systemName: "brain")
                     .font(.title3)

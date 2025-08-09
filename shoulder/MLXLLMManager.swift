@@ -145,6 +145,13 @@ class MLXLLMManager: ObservableObject {
         lastAnalysis = analysis
         analysisHistory[appName] = analysis
         
+        // Send notification for blocking manager to handle
+        NotificationCenter.default.post(
+            name: Notification.Name("MLXAnalysisCompleted"),
+            object: nil,
+            userInfo: ["analysis": analysis, "appName": appName]
+        )
+        
         await saveAnalysisResult(analysis, appName: appName)
         
         return analysis
