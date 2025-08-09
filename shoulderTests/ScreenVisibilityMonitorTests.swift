@@ -59,7 +59,7 @@ struct ScreenVisibilityMonitorTests {
     
     @Test func testWorkspaceIntegration() async throws {
         // Test that the monitor properly integrates with NSWorkspace
-        let monitor = ScreenVisibilityMonitor()
+        _ = ScreenVisibilityMonitor()
         
         // Verify that monitoring starts on init
         // The actual workspace interaction is tested indirectly

@@ -278,7 +278,7 @@ struct DashboardView: View {
                                 .opacity(mlxLLMManager.isAnalyzing ? 1.0 : 0.3)
                         }
                     }
-                } else if let lastAnalysis = mlxLLMManager.lastAnalysis {
+                } else if mlxLLMManager.lastAnalysis != nil {
                     Button(action: analyzeCurrentSession) {
                         Label("Analyze Now", systemImage: "arrow.clockwise")
                             .font(.caption)
