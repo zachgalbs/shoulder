@@ -322,32 +322,6 @@ class MLXLLMManager: ObservableObject {
         }
     }
     
-    func getFocusInsights(for date: Date = Date()) -> FocusInsights {
-        let calendar = Calendar.current
-        
-        let relevantAnalyses = analysisHistory.values.filter { analysis in
-            let formatter = ISO8601DateFormatter()
-            if let analysisDate = formatter.date(from: analysis.timestamp) {
-                return calendar.isDate(analysisDate, inSameDayAs: date)
-            }
-            return false
-        }
-        
-        let validCount = relevantAnalyses.filter { $0.is_valid }.count
-        let totalCount = relevantAnalyses.count
-        let focusPercentage = totalCount > 0 ? Double(validCount) / Double(totalCount) : 0.0
-        
-        let recentActivities = relevantAnalyses.suffix(5).map { $0.detected_activity }
-        
-        return FocusInsights(
-            focusPercentage: focusPercentage,
-            validSessions: validCount,
-            totalSessions: totalCount,
-            currentFocus: userFocus,
-            recentActivities: recentActivities
-        )
-    }
-    
     func switchModel(to modelID: String) async {
         selectedModel = modelID
         isModelLoaded = false
