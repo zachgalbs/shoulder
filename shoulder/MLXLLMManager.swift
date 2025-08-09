@@ -159,6 +159,8 @@ class MLXLLMManager: ObservableObject {
         Window title: \(windowTitle ?? "N/A")
         Screen content (OCR text, first 500 chars): \(String(text.prefix(500)))
         
+        IMPORTANT RULE: If the user's focus is "Debugging" and there is ANY evidence of code, programming languages, development tools, or technical content in the screen content, consider the activity as aligned (is_valid: true) with high confidence.
+        
         Based on this information, provide a JSON response with the following structure:
         {
             "is_valid": true/false (whether the activity aligns with the user's focus),
@@ -186,28 +188,86 @@ class MLXLLMManager: ObservableObject {
             // If JSON parsing fails, try to extract meaningful content
             print("[MLX] ⚠️ Failed to parse JSON response, using fallback parsing")
             
-            let isValid = generatedText.lowercased().contains("aligns") || generatedText.lowercased().contains("focused")
+            // Special handling for "Debugging" focus
+            let isDebuggingFocus = userFocus.lowercased().contains("debug")
+            let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
+            
+            let isValid: Bool
+            let confidence: Double
+            
+            if isDebuggingFocus && hasCodeEvidence {
+                // Lenient rule for debugging focus with code evidence
+                isValid = true
+                confidence = 0.85
+            } else {
+                isValid = generatedText.lowercased().contains("aligns") || generatedText.lowercased().contains("focused")
+                confidence = 0.5
+            }
+            
             let detectedActivity = detectActivity(text: text, appName: appName)
-            let explanation = "Analysis based on \(appName) usage."
+            let explanation = isDebuggingFocus && hasCodeEvidence ? 
+                "Code-related activity detected, aligned with debugging focus." : 
+                "Analysis based on \(appName) usage."
             
             return MLXAnalysisResult(
                 is_valid: isValid,
                 explanation: explanation,
                 detected_activity: detectedActivity,
-                confidence: 0.5,
+                confidence: confidence,
                 timestamp: ISO8601DateFormatter().string(from: Date())
             )
         }
         
-        let confidence = (json["confidence"] as? Double) ?? 0.7
+        var finalIsValid = isValid
+        var finalConfidence = (json["confidence"] as? Double) ?? 0.7
+        var finalExplanation = explanation
+        
+        // Apply lenient "Debugging" focus rule even when JSON parsing succeeds
+        let isDebuggingFocus = userFocus.lowercased().contains("debug")
+        if isDebuggingFocus && !isValid {
+            // Check if there's code evidence that the model might have missed
+            let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
+            if hasCodeEvidence {
+                // Override the model's decision for debugging focus with code evidence
+                finalIsValid = true
+                finalConfidence = max(finalConfidence, 0.75) // Ensure at least 75% confidence
+                finalExplanation = "Code-related activity detected. \(explanation)"
+                print("[MLX] 🔧 Applied lenient debugging rule: overriding model decision")
+            }
+        }
         
         return MLXAnalysisResult(
-            is_valid: isValid,
-            explanation: explanation,
+            is_valid: finalIsValid,
+            explanation: finalExplanation,
             detected_activity: detectedActivity,
-            confidence: confidence,
+            confidence: finalConfidence,
             timestamp: ISO8601DateFormatter().string(from: Date())
         )
+    }
+    
+    private func detectCodeEvidence(text: String, appName: String) -> Bool {
+        let textLower = text.lowercased()
+        let appLower = appName.lowercased()
+        
+        // Check for development-related applications
+        let devApps = ["xcode", "vscode", "visual studio", "sublime", "atom", "intellij", 
+                       "terminal", "iterm", "console", "github", "sourcetree", "tower"]
+        if devApps.contains(where: { appLower.contains($0) }) {
+            return true
+        }
+        
+        // Check for programming language keywords
+        let codeKeywords = ["function", "class", "struct", "import", "export", "return", 
+                           "if", "else", "for", "while", "var", "let", "const", "def", 
+                           "public", "private", "async", "await", "try", "catch", "throw",
+                           "{", "}", "[", "]", "(", ")", "=>", "->", "::", "//", "/*", "*/",
+                           "git", "npm", "yarn", "pip", "cargo", "swift", "python", "javascript",
+                           "typescript", "rust", "java", "cpp", "csharp", "ruby", "golang"]
+        
+        let keywordCount = codeKeywords.filter { textLower.contains($0) }.count
+        
+        // If we find at least 2 code-related keywords, consider it code evidence
+        return keywordCount >= 2
     }
     
     private func detectActivity(text: String, appName: String) -> String {
