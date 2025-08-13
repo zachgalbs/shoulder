@@ -74,11 +74,9 @@ class MLXLLMManager: ObservableObject {
             self.isModelReady = true
             self.modelLoadingMessage = "MLX model ready!"
             
-            print("[MLX] ✅ Language model loaded successfully: \(selectedModel)")
             
         } catch {
             modelLoadingMessage = "Failed to load model: \(error.localizedDescription)"
-            print("[MLX] ❌ Model loading failed: \(error)")
             
             self.isModelLoaded = false
             self.isModelReady = false
@@ -86,15 +84,11 @@ class MLXLLMManager: ObservableObject {
     }
     
     func analyzeScreenshot(ocrText: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
-        print("\n[MLX] 🧠 === MLX Analysis Pipeline ===")
-        print("[MLX] 🧠 Step A: Checking model status...")
         
         guard isModelReady else {
-            print("[MLX] ❌ Model not ready!")
             throw MLXLLMError.modelNotLoaded
         }
         
-        print("[MLX] 🧠 Step B: Model is ready, preparing analysis...")
         
         isAnalyzing = true
         defer { 
@@ -105,20 +99,13 @@ class MLXLLMManager: ObservableObject {
         
         let truncatedText = String(ocrText.prefix(1500))
         
-        print("[MLX] 🧠 Step C: Request context:")
-        print("[MLX]    - App: \(appName)")
-        print("[MLX]    - Window: \(windowTitle ?? "none")")
-        print("[MLX]    - User Focus: \(userFocus)")
-        print("[MLX]    - Text length: \(truncatedText.count) chars")
         
-        print("[MLX] 🧠 Step D: Generating response...")
         let startTime = Date()
         
         let analysis: MLXAnalysisResult
         
         if let container = modelContainer {
             // Use MLX model for analysis
-            print("[MLX] 🧠 Using MLX model for inference...")
             analysis = try await performMLXAnalysis(
                 container: container,
                 text: truncatedText,
@@ -127,27 +114,18 @@ class MLXLLMManager: ObservableObject {
             )
         } else {
             // No fallback - require model to be loaded
-            print("[MLX] ❌ Model not loaded")
             throw MLXLLMError.modelNotLoaded
         }
         
         let elapsed = Date().timeIntervalSince(startTime)
-        print("[MLX] 🧠 Step E: Response generated in \(String(format: "%.2f", elapsed))s")
         
-        print("[MLX] 🧠 Step F: Analysis complete!")
-        print("[MLX] ✅ === Analysis Complete ===")
-        print("[MLX]    Focus: \(userFocus)")
-        print("[MLX]    Valid: \(analysis.is_valid ? "✅ YES" : "❌ NO")")
-        print("[MLX]    Activity: \(analysis.detected_activity)")
-        print("[MLX]    Explanation: \(analysis.explanation)")
-        print("[MLX]    Confidence: \(Int(analysis.confidence * 100))%")
         
         lastAnalysis = analysis
         analysisHistory[appName] = analysis
         
         // Send notification for blocking manager to handle
         NotificationCenter.default.post(
-            name: Notification.Name("MLXAnalysisCompleted"),
+            name: .mlxAnalysisCompleted,
             object: nil,
             userInfo: ["analysis": analysis, "appName": appName]
         )
@@ -193,7 +171,6 @@ class MLXLLMManager: ObservableObject {
               let explanation = json["explanation"] as? String else {
             
             // If JSON parsing fails, try to extract meaningful content
-            print("[MLX] ⚠️ Failed to parse JSON response, using fallback parsing")
             
             // Special handling for "Debugging" focus
             let isDebuggingFocus = userFocus.lowercased().contains("debug")
@@ -239,7 +216,6 @@ class MLXLLMManager: ObservableObject {
                 finalIsValid = true
                 finalConfidence = max(finalConfidence, 0.75) // Ensure at least 75% confidence
                 finalExplanation = "Code-related activity detected. \(explanation)"
-                print("[MLX] 🔧 Applied lenient debugging rule: overriding model decision")
             }
         }
         
@@ -296,13 +272,8 @@ class MLXLLMManager: ObservableObject {
     }
     
     private func saveAnalysisResult(_ result: MLXAnalysisResult, appName: String) async {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateString = dateFormatter.string(from: Date())
-        
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH-mm-ss"
-        let timeString = timeFormatter.string(from: Date())
+        let dateString = DateFormatters.fileDate.string(from: Date())
+        let timeString = DateFormatters.fileTime.string(from: Date())
         
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let analysisDir = homeDir.appendingPathComponent("src/shoulder/analyses/\(dateString)")
@@ -316,9 +287,7 @@ class MLXLLMManager: ObservableObject {
             let data = try encoder.encode(result)
             
             try data.write(to: analysisFile)
-            print("[MLX] Analysis saved to: \(analysisFile.path)")
         } catch {
-            print("[MLX] Failed to save analysis: \(error)")
         }
     }
     

@@ -42,7 +42,6 @@ struct shoulderApp: App {
                     // Request notification permissions for blocking alerts
                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
                         if granted {
-                            print("Notification permissions granted")
                         }
                     }
                 }

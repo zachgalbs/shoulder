@@ -297,7 +297,6 @@ struct DashboardView: View {
                     windowTitle: activeSession?.windowTitle
                 )
             } catch {
-                print("[Dashboard] Analysis failed: \(error)")
             }
         }
     }

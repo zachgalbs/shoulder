@@ -51,9 +51,9 @@ struct DesignSystem {
     }
     
     struct Animation {
-        static let quick = SwiftUI.Animation.linear(duration: 0)
-        static let standard = SwiftUI.Animation.linear(duration: 0)
-        static let smooth = SwiftUI.Animation.linear(duration: 0)
+        static let quick = SwiftUI.Animation.easeInOut(duration: 0.15)
+        static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
+        static let smooth = SwiftUI.Animation.spring(response: 0.5, dampingFraction: 0.8)
     }
     
     struct Shadow {

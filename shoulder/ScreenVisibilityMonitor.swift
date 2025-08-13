@@ -68,14 +68,12 @@ class ScreenVisibilityMonitor: ObservableObject {
             }) {
                 // Merge: Resume the previous session instead of starting new
                 let recent = recentSessions[recentIndex]
-                print("[Session] Merging back to \(appName) session (was away for \(Int(now.timeIntervalSince(recent.endTime)))s)")
                 
                 // End and potentially delete the current short session
                 if let currentSession = currentSession {
                     currentSession.updateEndTime(now)
                     // If current session was very short, delete it
                     if let duration = currentSession.duration, duration < mergeWindowSeconds {
-                        print("[Session] Deleting short \(currentSession.appName) session (\(Int(duration))s)")
                         modelContext?.delete(currentSession)
                     }
                 }
@@ -124,7 +122,6 @@ class ScreenVisibilityMonitor: ObservableObject {
         do {
             try modelContext.save()
         } catch {
-            print("Failed to save session: \(error)")
         }
     }
     
@@ -152,7 +149,6 @@ class ScreenVisibilityMonitor: ObservableObject {
         do {
             try modelContext?.save()
         } catch {
-            print("Failed to save session end: \(error)")
         }
         
         currentSession = nil

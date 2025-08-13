@@ -5,7 +5,10 @@ import UserNotifications
 
 @MainActor
 class ApplicationBlockingManager: ObservableObject {
+    // MARK: - Singleton
     static let shared = ApplicationBlockingManager()
+    
+    // MARK: - Published Properties
     
     @Published var isBlockingEnabled: Bool = false
     @Published var blockedApplications: Set<String> = []
@@ -14,18 +17,26 @@ class ApplicationBlockingManager: ObservableObject {
     @Published var focusModeActive: Bool = false
     @Published var blockingConfidenceThreshold: Double = 0.7
     
+    // MARK: - Persisted Settings
+    
     @AppStorage("blockingEnabled") private var storedBlockingEnabled: Bool = false
     @AppStorage("blockedApps") private var storedBlockedApps: String = ""
     @AppStorage("whitelistedApps") private var storedWhitelistedApps: String = "Finder,System Preferences,System Settings,shoulder"
     @AppStorage("blockingConfidenceThreshold") private var storedConfidenceThreshold: Double = 0.7
     @AppStorage("focusModeActive") private var storedFocusModeActive: Bool = false
     
+    // MARK: - Private Properties
+    
     private var analysisSubscription: Any?
+    
+    // MARK: - Initialization
     
     private init() {
         loadSettings()
         setupAnalysisSubscription()
     }
+    
+    // MARK: - Settings Management
     
     private func loadSettings() {
         isBlockingEnabled = storedBlockingEnabled
@@ -49,11 +60,13 @@ class ApplicationBlockingManager: ObservableObject {
         storedWhitelistedApps = whitelistedApplications.joined(separator: ",")
     }
     
+    // MARK: - Analysis Handling
+    
     private func setupAnalysisSubscription() {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleAnalysisResult),
-            name: Notification.Name("MLXAnalysisCompleted"),
+            name: .mlxAnalysisCompleted,
             object: nil
         )
     }
@@ -62,30 +75,23 @@ class ApplicationBlockingManager: ObservableObject {
         guard let userInfo = notification.userInfo,
               let analysis = userInfo["analysis"] as? MLXAnalysisResult,
               let appName = userInfo["appName"] as? String else {
-            print("[Blocking] ❌ Missing analysis data in notification")
             return
         }
         
-        print("[Blocking] 📊 Analysis received for \(appName):")
-        print("[Blocking]    - Valid: \(analysis.is_valid)")
-        print("[Blocking]    - Confidence: \(Int(analysis.confidence * 100))%")
-        print("[Blocking]    - Threshold: \(Int(blockingConfidenceThreshold * 100))%")
-        print("[Blocking]    - Blocking enabled: \(isBlockingEnabled)")
         
         guard isBlockingEnabled else {
-            print("[Blocking] ⚠️ Blocking is disabled")
             return
         }
         
         Task { @MainActor in
             if !analysis.is_valid && analysis.confidence >= blockingConfidenceThreshold {
-                print("[Blocking] 🚫 Triggering block for \(appName)")
                 await blockApplicationIfNeeded(appName: appName, analysis: analysis)
             } else {
-                print("[Blocking] ✅ App allowed - Valid: \(analysis.is_valid), Confidence: \(analysis.confidence)")
             }
         }
     }
+    
+    // MARK: - Blocking Logic
     
     func shouldBlockApplication(_ appName: String) -> Bool {
         guard isBlockingEnabled else { return false }
@@ -110,27 +116,18 @@ class ApplicationBlockingManager: ObservableObject {
             // AI-driven blocking: block if off-task, unless whitelisted
             let isWhitelisted = whitelistedApplications.contains(appName)
             shouldBlock = !isWhitelisted && !analysis.is_valid
-            print("[Blocking] AI Check - App: \(appName), Whitelisted: \(isWhitelisted), Valid: \(analysis.is_valid), Should Block: \(shouldBlock)")
         } else {
             // Manual blocking: use standard rules
             shouldBlock = shouldBlockApplication(appName)
-            print("[Blocking] Manual Check - App: \(appName), Should Block: \(shouldBlock)")
         }
         
         guard shouldBlock else { 
-            print("[Blocking] ℹ️ Not blocking \(appName)")
             return 
         }
         
-        print("[Blocking] 🔍 Looking for running app: \(appName)")
         if let runningApp = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == appName }) {
-            print("[Blocking] 🎯 Found running app, proceeding to block")
             await blockApplication(runningApp, reason: analysis?.explanation)
         } else {
-            print("[Blocking] ⚠️ App '\(appName)' not found in running applications")
-            // Let's see what apps are running
-            let runningAppNames = NSWorkspace.shared.runningApplications.compactMap { $0.localizedName }.sorted()
-            print("[Blocking] Running apps: \(runningAppNames)")
         }
     }
     
@@ -138,12 +135,8 @@ class ApplicationBlockingManager: ObservableObject {
     private func blockApplication(_ app: NSRunningApplication, reason: String? = nil) async {
         guard let appName = app.localizedName else { return }
         
-        print("[Blocking] 🎯 Attempting to block: \(appName)")
-        print("[Blocking]    - PID: \(app.processIdentifier)")
-        print("[Blocking]    - Bundle ID: \(app.bundleIdentifier ?? "unknown")")
         
         if whitelistedApplications.contains(appName) {
-            print("[Blocking] ⚠️ App is whitelisted, not blocking")
             return
         }
         
@@ -154,18 +147,12 @@ class ApplicationBlockingManager: ObservableObject {
         
         showBlockingNotification(appName: appName, reason: reason)
         
-        print("[Blocking] 📤 Sending terminate signal...")
         let terminated = app.terminate()
-        print("[Blocking]    - Terminate result: \(terminated)")
         
         try? await Task.sleep(nanoseconds: 100_000_000)
         
         if app.isTerminated == false {
-            print("[Blocking] ⚠️ App still running, force terminating...")
             let forceTerminated = app.forceTerminate()
-            print("[Blocking]    - Force terminate result: \(forceTerminated)")
-        } else {
-            print("[Blocking] ✅ App successfully terminated")
         }
         
         logBlockingEvent(appName: appName, reason: reason)
@@ -187,18 +174,12 @@ class ApplicationBlockingManager: ObservableObject {
     }
     
     private func logBlockingEvent(appName: String, reason: String?) {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateString = dateFormatter.string(from: Date())
+        let logsURL = FilePaths.todayBlockingLogsPath()
         
-        let logsURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("src/shoulder/blocking_logs")
-            .appendingPathComponent(dateString)
-        
-        try? FileManager.default.createDirectory(at: logsURL, withIntermediateDirectories: true)
+        try? FilePaths.createDirectoryIfNeeded(at: logsURL)
         
         let logEntry: [String: Any] = [
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "timestamp": DateFormatters.iso8601.string(from: Date()),
             "app_name": appName,
             "reason": reason ?? "Manual blocking or focus mode",
             "confidence_threshold": blockingConfidenceThreshold
@@ -210,6 +191,8 @@ class ApplicationBlockingManager: ObservableObject {
             try? jsonData.write(to: logFileURL)
         }
     }
+    
+    // MARK: - List Management
     
     func addToBlocklist(_ appName: String) {
         blockedApplications.insert(appName)
@@ -232,6 +215,8 @@ class ApplicationBlockingManager: ObservableObject {
         whitelistedApplications.remove(appName)
         saveSettings()
     }
+    
+    // MARK: - Mode Controls
     
     func toggleFocusMode() {
         focusModeActive.toggle()
@@ -264,6 +249,8 @@ class ApplicationBlockingManager: ObservableObject {
         saveSettings()
     }
 }
+
+// MARK: - Statistics
 
 extension ApplicationBlockingManager {
     func getBlockingStatistics() -> (totalBlocked: Int, todayBlocked: Int, mostBlocked: String?) {
