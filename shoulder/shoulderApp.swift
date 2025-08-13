@@ -9,11 +9,13 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 
+
 @main
 struct shoulderApp: App {
     @StateObject private var screenMonitor = ScreenVisibilityMonitor()
     @StateObject private var screenshotManager = ScreenshotManager()
     @StateObject private var mlxLLMManager = MLXLLMManager()
+    @StateObject private var focusManager = FocusSessionManager()
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -30,21 +32,36 @@ struct shoulderApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(screenMonitor)
-                .environmentObject(mlxLLMManager)
-                .environmentObject(screenshotManager)
-                .onAppear {
-                    screenMonitor.setModelContext(sharedModelContainer.mainContext)
-                    screenshotManager.setMLXLLMManager(mlxLLMManager)
-                    screenshotManager.startCapturing()
-                    
-                    // Request notification permissions for blocking alerts
-                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-                        if granted {
+            if focusManager.hasActiveSession {
+                ContentView()
+                    .environmentObject(screenMonitor)
+                    .environmentObject(mlxLLMManager)
+                    .environmentObject(screenshotManager)
+                    .environmentObject(focusManager)
+                    .frame(minWidth: 600, minHeight: 500)
+                    .onAppear {
+                        screenMonitor.setModelContext(sharedModelContainer.mainContext)
+                        screenshotManager.setMLXLLMManager(mlxLLMManager)
+                        screenshotManager.startCapturing()
+                        
+                        // Request notification permissions for focus session alerts
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+                            if granted {
+                            }
                         }
                     }
-                }
+            } else {
+                FocusSelectionView()
+                    .environmentObject(focusManager)
+                    .frame(minWidth: 400, minHeight: 500)
+                    .onAppear {
+                        // Request notification permissions for focus session alerts
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+                            if granted {
+                            }
+                        }
+                    }
+            }
         }
         .modelContainer(sharedModelContainer)
     }
