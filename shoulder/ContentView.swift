@@ -118,15 +118,6 @@ struct ContentView: View {
             Divider()
             
             HStack {
-                HStack(spacing: DesignSystem.Spacing.xSmall) {
-                    PulsingDot(color: DesignSystem.Colors.activeGreen, size: 8)
-                    Text("Recording")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                }
-                
-                Spacer()
-                
                 MLXStatusView(mlxManager: mlxLLMManager)
                 
                 Spacer()
@@ -278,58 +269,37 @@ struct DetailRow: View {
 
 struct SettingsView: View {
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
-    @AppStorage("screenshotInterval") private var screenshotInterval = 60
-    @AppStorage("enableOCR") private var enableOCR = true
-    @AppStorage("enableAIAnalysis") private var enableAIAnalysis = false
     @State private var showFocusSaved = false
     
     var body: some View {
         Form {
-            Section("Screenshot Settings") {
-                HStack {
-                    Text("Capture Interval")
-                    Spacer()
-                    Picker("", selection: $screenshotInterval) {
-                        Text("30 seconds").tag(30)
-                        Text("1 minute").tag(60)
-                        Text("2 minutes").tag(120)
-                        Text("5 minutes").tag(300)
-                    }
-                    .pickerStyle(.menu)
-                }
-                
-                Toggle("Enable OCR Processing", isOn: $enableOCR)
-                Toggle("Enable AI Analysis", isOn: $enableAIAnalysis)
-                    .disabled(!enableOCR)
-                
-                if enableAIAnalysis {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Focus:")
-                                .foregroundColor(DesignSystem.Colors.textSecondary)
-                            TextField("What are you focusing on?", text: $mlxLLMManager.userFocus)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit {
-                                    // Force save to UserDefaults
-                                    UserDefaults.standard.set(mlxLLMManager.userFocus, forKey: "userFocus")
-                                    showFocusSaved = true
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                        showFocusSaved = false
-                                    }
+            Section("Focus Settings") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Focus:")
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        TextField("What are you focusing on?", text: $mlxLLMManager.userFocus)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                // Force save to UserDefaults
+                                UserDefaults.standard.set(mlxLLMManager.userFocus, forKey: "userFocus")
+                                showFocusSaved = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    showFocusSaved = false
                                 }
-                        }
-                        
-                        if showFocusSaved {
-                            Text("✓ Focus saved: \"\(mlxLLMManager.userFocus)\"")
-                                .font(.caption)
-                                .foregroundColor(DesignSystem.Colors.activeGreen)
-                                .transition(.opacity)
-                        }
-                        
-                        Text("The AI will check if your activities match this focus")
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.textTertiary)
+                            }
                     }
+                    
+                    if showFocusSaved {
+                        Text("✓ Focus saved: \"\(mlxLLMManager.userFocus)\"")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.activeGreen)
+                            .transition(.opacity)
+                    }
+                    
+                    Text("The AI will check if your activities match this focus")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textTertiary)
                 }
             }
             
@@ -349,9 +319,11 @@ struct SettingsView: View {
                 }
             }
             
-            Section("Storage") {
+            Section("Data Storage") {
                 HStack {
-                    Text("Screenshot Location")
+                    Button("Open Screenshots Folder") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/screenshots"))
+                    }
                     Spacer()
                     Text("~/src/shoulder/screenshots")
                         .font(.caption)
@@ -359,24 +331,18 @@ struct SettingsView: View {
                 }
                 
                 HStack {
-                    Text("Analysis Location")
+                    Button("Open Analysis Folder") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/analyses"))
+                    }
                     Spacer()
                     Text("~/src/shoulder/analyses")
                         .font(.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
                 
-                HStack {
-                    Button("Open Screenshots Folder") {
-                        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/screenshots"))
-                    }
-                    
-                    Spacer()
-                    
-                    Button("Open Analyses Folder") {
-                        NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/src/shoulder/analyses"))
-                    }
-                }
+                Text("Screenshots are captured every 60 seconds")
+                    .font(.caption)
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
             }
             
             Section("About") {

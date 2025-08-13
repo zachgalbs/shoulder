@@ -14,6 +14,8 @@ class ScreenVisibilityMonitor: ObservableObject {
     private var workspace: NSWorkspace
     private var modelContext: ModelContext?
     private var currentSession: Item?
+    private var recentSessions: [(app: String, session: Item, endTime: Date)] = []
+    private let mergeWindowSeconds: TimeInterval = 30.0
     
     init() {
         workspace = NSWorkspace.shared
@@ -58,8 +60,41 @@ class ScreenVisibilityMonitor: ObservableObject {
                 }
             }
             
-            endCurrentSession()
-            startSession(for: appName)
+            // Check if we're returning to a recent app within the merge window
+            let now = Date()
+            if let recentIndex = recentSessions.firstIndex(where: { recent in
+                recent.app == appName && 
+                now.timeIntervalSince(recent.endTime) <= mergeWindowSeconds
+            }) {
+                // Merge: Resume the previous session instead of starting new
+                let recent = recentSessions[recentIndex]
+                print("[Session] Merging back to \(appName) session (was away for \(Int(now.timeIntervalSince(recent.endTime)))s)")
+                
+                // End and potentially delete the current short session
+                if let currentSession = currentSession {
+                    currentSession.updateEndTime(now)
+                    // If current session was very short, delete it
+                    if let duration = currentSession.duration, duration < mergeWindowSeconds {
+                        print("[Session] Deleting short \(currentSession.appName) session (\(Int(duration))s)")
+                        modelContext?.delete(currentSession)
+                    }
+                }
+                
+                // Resume the previous session
+                recent.session.endTime = nil
+                recent.session.duration = nil
+                currentSession = recent.session
+                
+                // Remove from recent sessions since it's active again
+                recentSessions.remove(at: recentIndex)
+                
+                // Save the changes
+                try? modelContext?.save()
+            } else {
+                // Normal app switch - end current and start new
+                endCurrentSession()
+                startSession(for: appName)
+            }
         }
     }
     
@@ -98,6 +133,21 @@ class ScreenVisibilityMonitor: ObservableObject {
         
         let now = Date()
         session.updateEndTime(now)
+        
+        // Add to recent sessions for potential merging
+        if let appName = session.appName as String? {
+            recentSessions.append((app: appName, session: session, endTime: now))
+            
+            // Keep only last 3 recent sessions to prevent memory growth
+            if recentSessions.count > 3 {
+                recentSessions.removeFirst()
+            }
+            
+            // Clean up old recent sessions beyond merge window
+            recentSessions.removeAll { recent in
+                now.timeIntervalSince(recent.endTime) > mergeWindowSeconds * 2
+            }
+        }
         
         do {
             try modelContext?.save()

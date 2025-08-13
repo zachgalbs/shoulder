@@ -32,7 +32,6 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: DesignSystem.Spacing.large) {
                 headerSection
-                llmServerStatus
                 todaysSummary
                 if mlxLLMManager.isModelLoaded {
                     aiInsightsSection
@@ -70,74 +69,6 @@ struct DashboardView: View {
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             }
             
-            Spacer()
-            
-            HStack(spacing: DesignSystem.Spacing.xSmall) {
-                PulsingDot(color: DesignSystem.Colors.activeGreen, size: 8)
-                Text("Recording")
-                    .font(.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
-            .padding(.horizontal, DesignSystem.Spacing.small)
-            .padding(.vertical, DesignSystem.Spacing.xSmall)
-            .background(Capsule().fill(DesignSystem.Colors.activeGreen.opacity(0.1)))
-        }
-    }
-    
-    private var llmServerStatus: some View {
-        HStack {
-            if !mlxLLMManager.isModelReady {
-                // Server is starting
-                HStack(spacing: DesignSystem.Spacing.small) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text(mlxLLMManager.modelLoadingMessage)
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                }
-                .padding(.horizontal, DesignSystem.Spacing.medium)
-                .padding(.vertical, DesignSystem.Spacing.small)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                        .fill(Color.orange.opacity(0.1))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                )
-            } else if mlxLLMManager.isModelLoaded {
-                // Server is ready
-                HStack(spacing: DesignSystem.Spacing.small) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(DesignSystem.Colors.activeGreen)
-                        .font(.caption)
-                    Text("AI Analysis Ready")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.activeGreen)
-                }
-                .padding(.horizontal, DesignSystem.Spacing.medium)
-                .padding(.vertical, DesignSystem.Spacing.small)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                        .fill(DesignSystem.Colors.activeGreen.opacity(0.1))
-                )
-            } else {
-                // Server failed to start
-                HStack(spacing: DesignSystem.Spacing.small) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.red)
-                        .font(.caption)
-                    Text("AI Analysis Unavailable")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-                .padding(.horizontal, DesignSystem.Spacing.medium)
-                .padding(.vertical, DesignSystem.Spacing.small)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                        .fill(Color.red.opacity(0.1))
-                )
-            }
             Spacer()
         }
     }
