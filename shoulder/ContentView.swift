@@ -13,6 +13,7 @@ struct ContentView: View {
     @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
+    @EnvironmentObject var permissionManager: PermissionManager
     @State private var selectedTab: Tab = .dashboard
     
     enum Tab: String, CaseIterable {
@@ -48,6 +49,12 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .sheet(isPresented: $permissionManager.shouldShowGuide) {
+            PermissionGuideView(permissionManager: permissionManager)
+        }
+        .onAppear {
+            permissionManager.checkAllPermissions()
+        }
     }
     
     private var sidebarContent: some View {
@@ -269,10 +276,53 @@ struct DetailRow: View {
 
 struct SettingsView: View {
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
+    @EnvironmentObject var permissionManager: PermissionManager
     @State private var showFocusSaved = false
+    @State private var showPermissionGuide = false
     
     var body: some View {
         Form {
+            Section("Permissions") {
+                VStack(alignment: .leading, spacing: 8) {
+                    PermissionStatusRow(
+                        title: "Screen Recording",
+                        isGranted: permissionManager.screenRecordingGranted,
+                        icon: "rectangle.dashed.badge.record"
+                    )
+                    
+                    PermissionStatusRow(
+                        title: "Accessibility",
+                        isGranted: permissionManager.accessibilityGranted,
+                        icon: "hand.raised.square"
+                    )
+                    
+                    PermissionStatusRow(
+                        title: "Notifications",
+                        isGranted: permissionManager.notificationsGranted,
+                        icon: "bell.badge"
+                    )
+                    
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    HStack {
+                        Button("Check Permissions") {
+                            permissionManager.checkAllPermissions()
+                        }
+                        
+                        Spacer()
+                        
+                        if !permissionManager.allPermissionsGranted {
+                            Button("Run Setup") {
+                                showPermissionGuide = true
+                            }
+                            .foregroundColor(DesignSystem.Colors.accentBlue)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
             Section("Focus Settings") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -356,5 +406,49 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+        .sheet(isPresented: $showPermissionGuide) {
+            PermissionGuideView(permissionManager: permissionManager)
+        }
+        .onAppear {
+            permissionManager.checkAllPermissions()
+        }
+    }
+}
+
+struct PermissionStatusRow: View {
+    let title: String
+    let isGranted: Bool
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: DesignSystem.Spacing.small) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(isGranted ? DesignSystem.Colors.activeGreen : Color.orange)
+                .frame(width: 20)
+            
+            Text(title)
+                .font(.subheadline)
+            
+            Spacer()
+            
+            if isGranted {
+                HStack(spacing: 2) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                    Text("Granted")
+                        .font(.caption)
+                }
+                .foregroundColor(DesignSystem.Colors.activeGreen)
+            } else {
+                HStack(spacing: 2) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                    Text("Required")
+                        .font(.caption)
+                }
+                .foregroundColor(Color.orange)
+            }
+        }
     }
 }

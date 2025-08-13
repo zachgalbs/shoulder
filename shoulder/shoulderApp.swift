@@ -16,6 +16,7 @@ struct shoulderApp: App {
     @StateObject private var screenshotManager = ScreenshotManager()
     @StateObject private var mlxLLMManager = MLXLLMManager()
     @StateObject private var focusManager = FocusSessionManager()
+    @StateObject private var permissionManager = PermissionManager()
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
