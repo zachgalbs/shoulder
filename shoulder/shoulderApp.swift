@@ -14,6 +14,7 @@ struct shoulderApp: App {
     @StateObject private var screenMonitor = ScreenVisibilityMonitor()
     @StateObject private var screenshotManager = ScreenshotManager()
     @StateObject private var mlxLLMManager = MLXLLMManager()
+    @StateObject private var permissionManager = PermissionManager()
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -34,6 +35,7 @@ struct shoulderApp: App {
                 .environmentObject(screenMonitor)
                 .environmentObject(mlxLLMManager)
                 .environmentObject(screenshotManager)
+                .environmentObject(permissionManager)
                 .onAppear {
                     screenMonitor.setModelContext(sharedModelContainer.mainContext)
                     screenshotManager.setMLXLLMManager(mlxLLMManager)
