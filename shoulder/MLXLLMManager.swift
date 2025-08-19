@@ -8,9 +8,6 @@
 import Foundation
 import SwiftUI
 import MLX
-import MLXNN
-import MLXRandom
-import MLXOptimizers
 import MLXLLM
 import MLXLMCommon
 
