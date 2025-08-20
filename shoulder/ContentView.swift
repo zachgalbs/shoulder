@@ -323,6 +323,10 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
             }
             
+            Section("AI Model") {
+                ModelSelectionView(mlxManager: mlxLLMManager)
+            }
+            
             Section("Focus Settings") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -450,6 +454,106 @@ struct PermissionStatusRow: View {
                 .foregroundColor(Color.orange)
             }
         }
+    }
+}
+
+struct ModelSelectionView: View {
+    @ObservedObject var mlxManager: MLXLLMManager
+    @State private var isChangingModel = false
+    @State private var showApiKeyField = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Selected Model:")
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                Spacer()
+                if let currentConfig = mlxManager.currentModelConfig {
+                    Text(currentConfig.displayName)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(DesignSystem.Colors.accentBlue)
+                }
+            }
+            
+            Picker("AI Model", selection: Binding(
+                get: { mlxManager.selectedModel },
+                set: { newModel in
+                    Task {
+                        isChangingModel = true
+                        await mlxManager.switchModel(to: newModel)
+                        isChangingModel = false
+                    }
+                }
+            )) {
+                ForEach(ModelConfiguration.availableModels, id: \.id) { config in
+                    VStack(alignment: .leading) {
+                        Text(config.displayName)
+                            .font(.subheadline)
+                        Text(config.description)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .tag(config.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(isChangingModel)
+            
+            if isChangingModel {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Switching models...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            if mlxManager.isRemoteModel {
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("OpenAI API Key:")
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                        Button(action: { showApiKeyField.toggle() }) {
+                            Image(systemName: showApiKeyField ? "eye.slash" : "eye")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    if showApiKeyField {
+                        SecureField("Enter your OpenAI API key", text: $mlxManager.openaiApiKey)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        TextField("Enter your OpenAI API key", text: $mlxManager.openaiApiKey)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    if mlxManager.openaiApiKey.isEmpty {
+                        Text("⚠️ API key required for remote models")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    } else {
+                        Text("✓ API key configured")
+                            .font(.caption)
+                            .foregroundColor(DesignSystem.Colors.activeGreen)
+                    }
+                    
+                    Text("Remote models require an internet connection and API usage fees may apply.")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textTertiary)
+                }
+            }
+            
+            if let currentConfig = mlxManager.currentModelConfig {
+                Text(currentConfig.description)
+                    .font(.caption)
+                    .foregroundColor(DesignSystem.Colors.textTertiary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
