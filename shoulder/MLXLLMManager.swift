@@ -303,6 +303,7 @@ class MLXLLMManager: ObservableObject {
         request.httpMethod = "POST"
         request.addValue("Bearer \(openaiApiKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0  // 30 second timeout
         
         // Use GPT-5 specific parameters for better performance
         var requestBody: [String: Any] = [
@@ -316,8 +317,8 @@ class MLXLLMManager: ObservableObject {
         
         // Add GPT-5 specific parameters
         if selectedModel.hasPrefix("gpt-5") {
-            requestBody["reasoning_effort"] = "low"  // Use low reasoning for quick analysis
-            requestBody["verbosity"] = "concise"     // Get concise responses
+            requestBody["reasoning_effort"] = "medium"  // Controls reasoning depth
+            requestBody["verbosity"] = "low"            // Keeps responses concise for JSON parsing
             
             // Use structured outputs for guaranteed JSON format
             requestBody["response_format"] = [
@@ -347,8 +348,27 @@ class MLXLLMManager: ObservableObject {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw MLXLLMError.networkError
+            }
+            
+            // Handle different HTTP status codes more specifically
+            switch httpResponse.statusCode {
+            case 200:
+                break // Success
+            case 401:
+                throw MLXLLMError.apiKeyRequired
+            case 429:
+                throw MLXLLMError.networkError  // Rate limit
+            case 500...599:
+                throw MLXLLMError.networkError  // Server error
+            default:
+                // Try to parse error response for more details
+                if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let error = errorJson["error"] as? [String: Any],
+                   let message = error["message"] as? String {
+                    print("OpenAI API Error: \(message)")
+                }
                 throw MLXLLMError.networkError
             }
             
@@ -417,6 +437,23 @@ class MLXLLMManager: ObservableObject {
             )
             
         } catch {
+            // More specific error handling for network issues
+            if let urlError = error as? URLError {
+                switch urlError.code {
+                case .timedOut:
+                    print("OpenAI API request timed out")
+                case .notConnectedToInternet:
+                    print("No internet connection")
+                case .cannotConnectToHost:
+                    print("Cannot connect to OpenAI API")
+                case .networkConnectionLost:
+                    print("Network connection lost during request")
+                default:
+                    print("URL Error: \(urlError.localizedDescription)")
+                }
+            } else {
+                print("Network error: \(error.localizedDescription)")
+            }
             throw MLXLLMError.networkError
         }
     }
