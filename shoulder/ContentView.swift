@@ -14,17 +14,16 @@ struct ContentView: View {
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @EnvironmentObject var permissionManager: PermissionManager
+    @EnvironmentObject var focusManager: FocusSessionManager
     @State private var selectedTab: Tab = .dashboard
     
     enum Tab: String, CaseIterable {
-        case dashboard = "Dashboard"
-        case sessions = "Sessions"
+        case dashboard = "Focus"
         case settings = "Settings"
         
         var icon: String {
             switch self {
-            case .dashboard: return "square.grid.2x2"
-            case .sessions: return "list.bullet.rectangle"
+            case .dashboard: return "eye.trianglebadge.exclamationmark"
             case .settings: return "gearshape"
             }
         }
@@ -40,8 +39,6 @@ struct ContentView: View {
                     switch selectedTab {
                     case .dashboard:
                         DashboardView()
-                    case .sessions:
-                        SessionsListView()
                     case .settings:
                         SettingsView()
                     }
@@ -106,7 +103,7 @@ struct ContentView: View {
                         .fontWeight(.bold)
                         .accessibilityIdentifier("AppTitle")
                     
-                    Text("Activity Monitor")
+                    Text("Focus Companion")
                         .font(.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                         .accessibilityIdentifier("AppSubtitle")
@@ -124,15 +121,7 @@ struct ContentView: View {
         VStack(spacing: DesignSystem.Spacing.small) {
             Divider()
             
-            HStack {
-                MLXStatusView(mlxManager: mlxLLMManager)
-                
-                Spacer()
-                
-                Text("\(items.count) sessions")
-                    .font(.caption2)
-                    .foregroundColor(DesignSystem.Colors.textTertiary)
-            }
+            MLXStatusView(mlxManager: mlxLLMManager)
             .padding(DesignSystem.Spacing.medium)
         }
     }
@@ -144,140 +133,10 @@ struct ContentView: View {
     }
 }
 
-struct SessionDetailView: View {
-    let session: Item
-    
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.large) {
-                headerSection
-                overviewSection
-            }
-            .padding(DesignSystem.Spacing.large)
-        }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(NSColor.windowBackgroundColor),
-                    DesignSystem.Colors.accentBlue.opacity(0.03)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .navigationTitle("Session Details")
-    }
-    
-    private var headerSection: some View {
-        HStack(spacing: DesignSystem.Spacing.large) {
-            AppIconView(appName: session.appName, size: 64)
-            
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xSmall) {
-                Text(session.appName)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                if let windowTitle = session.windowTitle {
-                    Text(windowTitle)
-                        .font(.title3)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .lineLimit(2)
-                }
-                
-                HStack(spacing: DesignSystem.Spacing.medium) {
-                    if session.endTime == nil {
-                        HStack(spacing: DesignSystem.Spacing.xxSmall) {
-                            PulsingDot(color: DesignSystem.Colors.activeGreen, size: 8)
-                            Text("Active Session")
-                                .font(.caption)
-                                .foregroundColor(DesignSystem.Colors.activeGreen)
-                        }
-                    } else {
-                        HStack(spacing: DesignSystem.Spacing.xxSmall) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(DesignSystem.Colors.textTertiary)
-                            Text("Completed")
-                                .font(.caption)
-                                .foregroundColor(DesignSystem.Colors.textTertiary)
-                        }
-                    }
-                    
-                    if let duration = session.duration {
-                        Text("•")
-                            .foregroundColor(DesignSystem.Colors.textTertiary)
-                        Text(formatDuration(duration))
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                    }
-                }
-            }
-            
-            Spacer()
-        }
-        .padding(DesignSystem.Spacing.large)
-        .glassCard()
-    }
-    
-    private var overviewSection: some View {
-        VStack(spacing: DesignSystem.Spacing.medium) {
-            DetailRow(label: "Started", value: session.startTime.formatted(date: .abbreviated, time: .standard), icon: "play.circle")
-            
-            if let endTime = session.endTime {
-                DetailRow(label: "Ended", value: endTime.formatted(date: .abbreviated, time: .standard), icon: "stop.circle")
-            }
-            
-            if let duration = session.duration {
-                DetailRow(label: "Duration", value: formatDuration(duration), icon: "timer")
-            }
-        }
-    }
-    
-    private func formatDuration(_ duration: TimeInterval) -> String {
-        let hours = Int(duration) / 3600
-        let minutes = Int(duration) % 3600 / 60
-        let seconds = Int(duration) % 60
-        
-        if hours > 0 {
-            return String(format: "%dh %dm %ds", hours, minutes, seconds)
-        } else if minutes > 0 {
-            return String(format: "%dm %ds", minutes, seconds)
-        } else {
-            return String(format: "%ds", seconds)
-        }
-    }
-}
-
-struct DetailRow: View {
-    let label: String
-    let value: String
-    let icon: String
-    
-    var body: some View {
-        HStack {
-            HStack(spacing: DesignSystem.Spacing.small) {
-                Image(systemName: icon)
-                    .foregroundColor(DesignSystem.Colors.accentBlue)
-                    .frame(width: 20)
-                
-                Text(label)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
-            
-            Spacer()
-            
-            Text(value)
-                .foregroundColor(DesignSystem.Colors.textPrimary)
-                .fontWeight(.medium)
-        }
-        .padding(DesignSystem.Spacing.medium)
-        .glassCard()
-    }
-}
 
 struct SettingsView: View {
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @EnvironmentObject var permissionManager: PermissionManager
-    @State private var showFocusSaved = false
     @State private var showPermissionGuide = false
     
     var body: some View {
@@ -327,35 +186,6 @@ struct SettingsView: View {
                 ModelSelectionView(mlxManager: mlxLLMManager)
             }
             
-            Section("Focus Settings") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Focus:")
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                        TextField("What are you focusing on?", text: $mlxLLMManager.userFocus)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit {
-                                // Force save to UserDefaults
-                                UserDefaults.standard.set(mlxLLMManager.userFocus, forKey: "userFocus")
-                                showFocusSaved = true
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                    showFocusSaved = false
-                                }
-                            }
-                    }
-                    
-                    if showFocusSaved {
-                        Text("✓ Focus saved: \"\(mlxLLMManager.userFocus)\"")
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.activeGreen)
-                            .transition(.opacity)
-                    }
-                    
-                    Text("The AI will check if your activities match this focus")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.textTertiary)
-                }
-            }
             
             Section("Application Blocking") {
                 NavigationLink(destination: BlockingSettingsView()) {
