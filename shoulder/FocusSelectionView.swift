@@ -13,6 +13,7 @@ struct FocusSelectionView: View {
     @State private var selectedDuration: Int = 60
     @State private var customDuration: String = ""
     @State private var useCustomDuration: Bool = false
+    @State private var customDurationError: String?
     
     let predefinedDurations = [15, 30, 45, 60, 90, 120]
     
@@ -193,8 +194,21 @@ struct FocusSelectionView: View {
                         .frame(width: 80)
                         .disabled(!useCustomDuration)
                         .onChange(of: customDuration) {
-                            if useCustomDuration, let minutes = Int(customDuration), minutes > 0 {
-                                selectedDuration = minutes
+                            if useCustomDuration {
+                                if let minutes = Int(customDuration) {
+                                    if minutes <= 0 {
+                                        customDurationError = "Duration must be greater than 0"
+                                    } else if minutes > 480 {
+                                        customDurationError = "Duration cannot exceed 8 hours (480 minutes)"
+                                    } else {
+                                        customDurationError = nil
+                                        selectedDuration = minutes
+                                    }
+                                } else if !customDuration.isEmpty {
+                                    customDurationError = "Please enter a valid number"
+                                } else {
+                                    customDurationError = nil
+                                }
                             }
                         }
                     
@@ -202,6 +216,13 @@ struct FocusSelectionView: View {
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                     
                     Spacer()
+                }
+                
+                if let error = customDurationError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -307,6 +328,7 @@ struct FocusSelectionView: View {
     
     private func startFocusSession() {
         guard !focusText.isEmpty else { return }
+        guard customDurationError == nil else { return }
         
         let duration = useCustomDuration ? (Int(customDuration) ?? 60) : selectedDuration
         focusManager.startFocusSession(focus: focusText, durationMinutes: duration)

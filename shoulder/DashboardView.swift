@@ -9,11 +9,11 @@ import SwiftUI
 import SwiftData
 
 struct DashboardView: View {
-    @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @EnvironmentObject var screenshotManager: ScreenshotManager
     @EnvironmentObject var focusManager: FocusSessionManager
+    @State private var analysisError: String?
     
     var body: some View {
         GeometryReader { geometry in
@@ -29,6 +29,18 @@ struct DashboardView: View {
                     // Focus Status Indicator
                     if mlxLLMManager.isModelLoaded {
                         focusStatusIndicator
+                    }
+                    
+                    // Error message
+                    if let error = analysisError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(DesignSystem.Spacing.small)
+                            .background(
+                                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                                    .fill(Color.red.opacity(0.1))
+                            )
                     }
                     
                     // End Session Button
@@ -230,6 +242,10 @@ struct DashboardView: View {
                     windowTitle: nil
                 )
             } catch {
+                analysisError = "Analysis failed: \(error.localizedDescription)"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    analysisError = nil
+                }
             }
         }
     }
