@@ -37,25 +37,25 @@ struct AIModelConfiguration {
             id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
             displayName: "Qwen2.5-3B (Local)",
             type: .local,
-            description: ""
+            description: "Fast local model using MLX"
         ),
         AIModelConfiguration(
             id: "gpt-5",
             displayName: "GPT-5",
             type: .remote,
-            description: ""
+            description: "OpenAI's most advanced model for complex reasoning"
         ),
         AIModelConfiguration(
             id: "gpt-5-mini",
             displayName: "GPT-5 Mini",
             type: .remote,
-            description: ""
+            description: "Balanced performance and cost for most applications"
         ),
         AIModelConfiguration(
             id: "gpt-5-nano",
             displayName: "GPT-5 Nano",
             type: .remote,
-            description: ""
+            description: "Lightweight and economical for real-time tasks"
         )
     ]
     
