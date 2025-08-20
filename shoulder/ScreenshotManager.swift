@@ -87,6 +87,8 @@ class ScreenshotManager: ObservableObject {
                 
                 
             } catch {
+                // Log failures but don't re-queue since they'll likely fail again
+                print("Failed to process pending analysis for \(pending.appName): \(error)")
             }
         }
         
@@ -423,14 +425,20 @@ class ScreenshotManager: ObservableObject {
                 
                 
             } catch {
-                
-                // If it failed due to model not loaded, queue it
-                if case MLXLLMError.modelNotLoaded = error {
+                // Handle different error types appropriately
+                switch error {
+                case MLXLLMError.modelNotLoaded:
+                    // Queue for retry when model is ready
                     pendingAnalyses.append(PendingAnalysis(
                         ocrText: ocrText,
                         appName: appName,
                         timestamp: Date()
                     ))
+                case MLXLLMError.invalidResponse:
+                    // Log but don't retry - LLM couldn't parse or generate valid JSON
+                    print("LLM analysis failed - invalid response for \(appName)")
+                default:
+                    print("Analysis error for \(appName): \(error)")
                 }
             }
         }

@@ -82,6 +82,12 @@ class ApplicationBlockingManager: ObservableObject {
             return
         }
         
+        // Only process notifications from actual LLM analysis
+        guard analysis.analysis_source == "llm" else {
+            // Silently ignore non-LLM analysis results
+            return
+        }
+        
         Task { @MainActor in
             // Send unfocused notification if enabled and activity is off-task
             if unfocusedNotificationsEnabled && !analysis.is_valid && analysis.confidence >= 0.5 {

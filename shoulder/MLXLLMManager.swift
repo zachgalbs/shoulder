@@ -64,6 +64,7 @@ struct MLXAnalysisResult: Codable {
     let detected_activity: String
     let confidence: Double
     let timestamp: String
+    let analysis_source: String  // "llm" for actual AI analysis, "error" for failures
 }
 
 @MainActor
@@ -250,61 +251,20 @@ class MLXLLMManager: ObservableObject {
               let detectedActivity = json["detected_activity"] as? String,
               let explanation = json["explanation"] as? String else {
             
-            // If JSON parsing fails, try to extract meaningful content
-            
-            // Special handling for "Debugging" focus
-            let isDebuggingFocus = userFocus.lowercased().contains("debug")
-            let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
-            
-            let isValid: Bool
-            let confidence: Double
-            
-            if isDebuggingFocus && hasCodeEvidence {
-                // Lenient rule for debugging focus with code evidence
-                isValid = true
-                confidence = 0.85
-            } else {
-                isValid = generatedText.lowercased().contains("aligns") || generatedText.lowercased().contains("focused")
-                confidence = 0.5
-            }
-            
-            let detectedActivity = detectActivity(text: text, appName: appName)
-            let explanation = isDebuggingFocus && hasCodeEvidence ? 
-                "Debugging code" : 
-                "Using \(appName)"
-            
-            return MLXAnalysisResult(
-                is_valid: isValid,
-                explanation: explanation,
-                detected_activity: detectedActivity,
-                confidence: confidence,
-                timestamp: ISO8601DateFormatter().string(from: Date())
-            )
+            // If JSON parsing fails, throw an error instead of using fallback
+            throw MLXLLMError.invalidResponse
         }
         
-        var finalIsValid = isValid
-        var finalConfidence = (json["confidence"] as? Double) ?? 0.7
-        var finalExplanation = explanation
+        let confidence = (json["confidence"] as? Double) ?? 0.7
         
-        // Apply lenient "Debugging" focus rule even when JSON parsing succeeds
-        let isDebuggingFocus = userFocus.lowercased().contains("debug")
-        if isDebuggingFocus && !isValid {
-            // Check if there's code evidence that the model might have missed
-            let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
-            if hasCodeEvidence {
-                // Override the model's decision for debugging focus with code evidence
-                finalIsValid = true
-                finalConfidence = max(finalConfidence, 0.75) // Ensure at least 75% confidence
-                finalExplanation = "Coding: \(detectedActivity)"
-            }
-        }
-        
+        // Return the LLM's analysis without any overrides or modifications
         return MLXAnalysisResult(
-            is_valid: finalIsValid,
-            explanation: finalExplanation,
+            is_valid: isValid,
+            explanation: explanation,
             detected_activity: detectedActivity,
-            confidence: finalConfidence,
-            timestamp: ISO8601DateFormatter().string(from: Date())
+            confidence: confidence,
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            analysis_source: "llm"
         )
     }
     
