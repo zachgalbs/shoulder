@@ -24,6 +24,7 @@ struct MLXAnalysisResult: Codable {
     let detected_activity: String
     let confidence: Double
     let timestamp: String
+    let analysis_source: String  // "llm" for actual AI analysis, "error" for failures
 }
 
 @MainActor
@@ -163,106 +164,23 @@ class MLXLLMManager: ObservableObject {
               let detectedActivity = json["detected_activity"] as? String,
               let explanation = json["explanation"] as? String else {
             
-            // If JSON parsing fails, try to extract meaningful content
-            
-            // Special handling for "Debugging" focus
-            let isDebuggingFocus = userFocus.lowercased().contains("debug")
-            let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
-            
-            let isValid: Bool
-            let confidence: Double
-            
-            if isDebuggingFocus && hasCodeEvidence {
-                // Lenient rule for debugging focus with code evidence
-                isValid = true
-                confidence = 0.85
-            } else {
-                isValid = generatedText.lowercased().contains("aligns") || generatedText.lowercased().contains("focused")
-                confidence = 0.5
-            }
-            
-            let detectedActivity = detectActivity(text: text, appName: appName)
-            let explanation = isDebuggingFocus && hasCodeEvidence ? 
-                "Debugging code" : 
-                "Using \(appName)"
-            
-            return MLXAnalysisResult(
-                is_valid: isValid,
-                explanation: explanation,
-                detected_activity: detectedActivity,
-                confidence: confidence,
-                timestamp: ISO8601DateFormatter().string(from: Date())
-            )
+            // If JSON parsing fails, throw an error instead of using fallback
+            throw MLXLLMError.invalidResponse
         }
         
-        var finalIsValid = isValid
-        var finalConfidence = (json["confidence"] as? Double) ?? 0.7
-        var finalExplanation = explanation
+        let confidence = (json["confidence"] as? Double) ?? 0.7
         
-        // Apply lenient "Debugging" focus rule even when JSON parsing succeeds
-        let isDebuggingFocus = userFocus.lowercased().contains("debug")
-        if isDebuggingFocus && !isValid {
-            // Check if there's code evidence that the model might have missed
-            let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
-            if hasCodeEvidence {
-                // Override the model's decision for debugging focus with code evidence
-                finalIsValid = true
-                finalConfidence = max(finalConfidence, 0.75) // Ensure at least 75% confidence
-                finalExplanation = "Coding: \(detectedActivity)"
-            }
-        }
-        
+        // Return the LLM's analysis without any overrides or modifications
         return MLXAnalysisResult(
-            is_valid: finalIsValid,
-            explanation: finalExplanation,
+            is_valid: isValid,
+            explanation: explanation,
             detected_activity: detectedActivity,
-            confidence: finalConfidence,
-            timestamp: ISO8601DateFormatter().string(from: Date())
+            confidence: confidence,
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            analysis_source: "llm"
         )
     }
     
-    private func detectCodeEvidence(text: String, appName: String) -> Bool {
-        let textLower = text.lowercased()
-        let appLower = appName.lowercased()
-        
-        // Check for development-related applications
-        let devApps = ["xcode", "vscode", "visual studio", "sublime", "atom", "intellij", 
-                       "terminal", "iterm", "console", "github", "sourcetree", "tower"]
-        if devApps.contains(where: { appLower.contains($0) }) {
-            return true
-        }
-        
-        // Check for programming language keywords
-        let codeKeywords = ["function", "class", "struct", "import", "export", "return", 
-                           "if", "else", "for", "while", "var", "let", "const", "def", 
-                           "public", "private", "async", "await", "try", "catch", "throw",
-                           "{", "}", "[", "]", "(", ")", "=>", "->", "::", "//", "/*", "*/",
-                           "git", "npm", "yarn", "pip", "cargo", "swift", "python", "javascript",
-                           "typescript", "rust", "java", "cpp", "csharp", "ruby", "golang"]
-        
-        let keywordCount = codeKeywords.filter { textLower.contains($0) }.count
-        
-        // If we find at least 2 code-related keywords, consider it code evidence
-        return keywordCount >= 2
-    }
-    
-    private func detectActivity(text: String, appName: String) -> String {
-        let textLower = text.lowercased()
-        let appLower = appName.lowercased()
-        
-        if appLower.contains("xcode") || appLower.contains("vscode") || 
-           textLower.contains("function") || textLower.contains("class") {
-            return "coding"
-        } else if appLower.contains("safari") || appLower.contains("chrome") {
-            return "browsing"
-        } else if appLower.contains("slack") || appLower.contains("messages") {
-            return "messaging"
-        } else if appLower.contains("pages") || appLower.contains("word") {
-            return "writing"
-        } else {
-            return "working"
-        }
-    }
     
     private func saveAnalysisResult(_ result: MLXAnalysisResult, appName: String) async {
         let dateString = DateFormatters.fileDate.string(from: Date())
