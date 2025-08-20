@@ -305,18 +305,19 @@ class MLXLLMManager: ObservableObject {
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 30.0  // 30 second timeout
         
-        // Use GPT-5 specific parameters for better performance
+        // Build request body based on model type
         var requestBody: [String: Any] = [
             "model": selectedModel,
             "messages": [
                 ["role": "user", "content": prompt]
-            ],
-            "max_tokens": 200,
-            "temperature": 0.1
+            ]
         ]
         
-        // Add GPT-5 specific parameters
+        // Add model-specific parameters
         if selectedModel.hasPrefix("gpt-5") {
+            // GPT-5 specific parameters
+            // Note: GPT-5 only supports default temperature (1), so we don't set it
+            requestBody["max_completion_tokens"] = 200  // GPT-5 uses max_completion_tokens instead of max_tokens
             requestBody["reasoning_effort"] = "medium"  // Controls reasoning depth
             requestBody["verbosity"] = "low"            // Keeps responses concise for JSON parsing
             
@@ -337,6 +338,10 @@ class MLXLLMManager: ObservableObject {
                     ]
                 ]
             ]
+        } else {
+            // For non-GPT-5 models, use standard parameters
+            requestBody["max_tokens"] = 200
+            requestBody["temperature"] = 0.1  // Non-GPT-5 models support custom temperature
         }
         
         do {
