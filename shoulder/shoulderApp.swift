@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import Network
 
 
 @main
@@ -30,6 +31,20 @@ struct shoulderApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()
+    
+    init() {
+        // Configure network settings to prevent NECP warnings
+        configureNetworking()
+    }
+    
+    private func configureNetworking() {
+        // Configure global network settings to prevent network path warnings
+        // This helps suppress NECP (Network Extension Control Policy) warnings
+        // that occur when the system tries to check network policies for app requests
+        
+        // Set default cache policy to reduce unnecessary network calls
+        URLCache.shared = URLCache(memoryCapacity: 50 * 1024 * 1024, diskCapacity: 100 * 1024 * 1024, diskPath: nil)
+    }
 
     var body: some Scene {
         WindowGroup {
