@@ -39,6 +39,7 @@ struct shoulderApp: App {
                     .environmentObject(mlxLLMManager)
                     .environmentObject(screenshotManager)
                     .environmentObject(focusManager)
+                    .environmentObject(permissionManager)
                     .frame(minWidth: 600, minHeight: 500)
                     .onAppear {
                         screenMonitor.setModelContext(sharedModelContainer.mainContext)

@@ -8,19 +8,22 @@ struct BlockingSettingsView: View {
     @State private var showingAddWhitelistedApp = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            blockingToggleSection
-            
-            if blockingManager.isBlockingEnabled {
-                focusModeSection
-                confidenceThresholdSection
-                blockedAppsSection
-                whitelistedAppsSection
-                blockingStatisticsSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                blockingToggleSection
+                
+                if blockingManager.isBlockingEnabled {
+                    focusModeSection
+                    confidenceThresholdSection
+                    blockedAppsSection
+                    whitelistedAppsSection
+                    blockingStatisticsSection
+                }
             }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private var blockingToggleSection: some View {

@@ -16,10 +16,12 @@ class ApplicationBlockingManager: ObservableObject {
     @Published var recentlyBlockedApps: [(app: String, timestamp: Date)] = []
     @Published var focusModeActive: Bool = false
     @Published var blockingConfidenceThreshold: Double = 0.7
+    @Published var unfocusedNotificationsEnabled: Bool = true
     
     // MARK: - Persisted Settings
     
     @AppStorage("blockingEnabled") private var storedBlockingEnabled: Bool = false
+    @AppStorage("unfocusedNotificationsEnabled") private var storedUnfocusedNotificationsEnabled: Bool = true
     @AppStorage("blockedApps") private var storedBlockedApps: String = ""
     @AppStorage("whitelistedApps") private var storedWhitelistedApps: String = "Finder,System Preferences,System Settings,shoulder"
     @AppStorage("blockingConfidenceThreshold") private var storedConfidenceThreshold: Double = 0.7
@@ -42,6 +44,7 @@ class ApplicationBlockingManager: ObservableObject {
         isBlockingEnabled = storedBlockingEnabled
         focusModeActive = storedFocusModeActive
         blockingConfidenceThreshold = storedConfidenceThreshold
+        unfocusedNotificationsEnabled = storedUnfocusedNotificationsEnabled
         
         if !storedBlockedApps.isEmpty {
             blockedApplications = Set(storedBlockedApps.split(separator: ",").map(String.init))
@@ -56,6 +59,7 @@ class ApplicationBlockingManager: ObservableObject {
         storedBlockingEnabled = isBlockingEnabled
         storedFocusModeActive = focusModeActive
         storedConfidenceThreshold = blockingConfidenceThreshold
+        storedUnfocusedNotificationsEnabled = unfocusedNotificationsEnabled
         storedBlockedApps = blockedApplications.joined(separator: ",")
         storedWhitelistedApps = whitelistedApplications.joined(separator: ",")
     }
