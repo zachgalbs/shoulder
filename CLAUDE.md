@@ -105,3 +105,6 @@ The app accesses sensitive system APIs for screen capture and application monito
 - LLM analysis via native MLX framework for on-device inference
 - SwiftData storage is intentionally in-memory only to avoid persistence issues
 - All monitoring components are ObservableObject classes for SwiftUI integration
+
+## GPT 5
+The OpenAI model gpt-5, gpt-5-mini, and gpt-5-nano have been released.

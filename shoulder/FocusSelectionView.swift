@@ -224,7 +224,6 @@ struct FocusSelectionView: View {
                         .foregroundColor(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity)
         }
