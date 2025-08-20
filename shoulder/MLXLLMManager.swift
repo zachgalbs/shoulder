@@ -210,12 +210,27 @@ class MLXLLMManager: ObservableObject {
         lastAnalysis = analysis
         analysisHistory[appName] = analysis
         
+        // DEBUG: Log notification details before sending
+        print("📢 [DEBUG] Sending MLX Analysis Notification:")
+        print("  Notification Name: mlxAnalysisCompleted")
+        print("  App Name: \(appName)")
+        print("  Analysis Result:")
+        print("    is_valid: \(analysis.is_valid)")
+        print("    detected_activity: \(analysis.detected_activity)")
+        print("    explanation: \(analysis.explanation)")
+        print("    confidence: \(analysis.confidence)")
+        print("    analysis_source: \(analysis.analysis_source)")
+        print("  Notification will be used by blocking manager to determine if user should be notified of distraction")
+        print("───────────────────────────────────")
+        
         // Send notification for blocking manager to handle
         NotificationCenter.default.post(
             name: .mlxAnalysisCompleted,
             object: nil,
             userInfo: ["analysis": analysis, "appName": appName]
         )
+        
+        print("✅ [DEBUG] Notification sent successfully")
         
         await saveAnalysisResult(analysis, appName: appName)
         
@@ -244,11 +259,28 @@ class MLXLLMManager: ObservableObject {
         Respond ONLY with valid JSON, no additional text.
         """
         
+        // DEBUG: Log the system prompt being sent to local MLX model
+        print("🧠 [DEBUG] MLX Local Model Prompt:")
+        print("───────────────────────────────────")
+        print("Model: \(selectedModel)")
+        print("User Focus: \(userFocus)")
+        print("App: \(appName)")
+        print("Window: \(windowTitle ?? "N/A")")
+        print("OCR Text (first 100 chars): \(String(text.prefix(100)))")
+        print("Full Prompt:")
+        print(prompt)
+        print("───────────────────────────────────")
+        
         // Create a chat session for the analysis
         let session = ChatSession(container)
         
         // Generate response using the LLM
         let generatedText = try await session.respond(to: prompt)
+        
+        // DEBUG: Log the raw response from local MLX model
+        print("📄 [DEBUG] Raw MLX Model Response:")
+        print(generatedText)
+        print("───────────────────────────────────")
         
         // Parse the JSON response
         guard let jsonData = generatedText.data(using: String.Encoding.utf8),
@@ -257,14 +289,24 @@ class MLXLLMManager: ObservableObject {
               let detectedActivity = json["detected_activity"] as? String,
               let explanation = json["explanation"] as? String else {
             
+            print("❌ [DEBUG] Failed to parse MLX model JSON response")
             // If JSON parsing fails, throw an error instead of using fallback
             throw MLXLLMError.invalidResponse
+        }
+        
+        // DEBUG: Log successful JSON parsing from MLX model
+        print("✅ [DEBUG] Successfully parsed MLX JSON response:")
+        print("  is_valid: \(isValid)")
+        print("  detected_activity: \(detectedActivity)")
+        print("  explanation: \(explanation)")
+        if let confidence = json["confidence"] as? Double {
+            print("  confidence: \(confidence)")
         }
         
         let confidence = (json["confidence"] as? Double) ?? 0.7
         
         // Return the LLM's analysis without any overrides or modifications
-        return MLXAnalysisResult(
+        let result = MLXAnalysisResult(
             is_valid: isValid,
             explanation: explanation,
             detected_activity: detectedActivity,
@@ -272,6 +314,17 @@ class MLXLLMManager: ObservableObject {
             timestamp: ISO8601DateFormatter().string(from: Date()),
             analysis_source: "llm"
         )
+        
+        // DEBUG: Log the final local analysis result
+        print("🏁 [DEBUG] Final MLX Local Analysis Result:")
+        print("  is_valid: \(result.is_valid)")
+        print("  detected_activity: \(result.detected_activity)")
+        print("  explanation: \(result.explanation)")
+        print("  confidence: \(result.confidence)")
+        print("  analysis_source: \(result.analysis_source)")
+        print("───────────────────────────────────")
+        
+        return result
     }
     
     private func performRemoteAnalysis(text: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
@@ -298,6 +351,18 @@ class MLXLLMManager: ObservableObject {
         
         Respond ONLY with valid JSON, no additional text.
         """
+        
+        // DEBUG: Log the system prompt being sent to OpenAI
+        print("🤖 [DEBUG] OpenAI System Prompt:")
+        print("───────────────────────────────────")
+        print("Model: \(selectedModel)")
+        print("User Focus: \(userFocus)")
+        print("App: \(appName)")
+        print("Window: \(windowTitle ?? "N/A")")
+        print("OCR Text (first 100 chars): \(String(text.prefix(100)))")
+        print("Full Prompt:")
+        print(prompt)
+        print("───────────────────────────────────")
         
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
         request.httpMethod = "POST"
@@ -346,7 +411,16 @@ class MLXLLMManager: ObservableObject {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            
+            // DEBUG: Log the request body being sent to OpenAI
+            print("📤 [DEBUG] OpenAI Request Body:")
+            if let prettyData = try? JSONSerialization.data(withJSONObject: requestBody, options: .prettyPrinted),
+               let prettyString = String(data: prettyData, encoding: .utf8) {
+                print(prettyString)
+            }
+            print("───────────────────────────────────")
         } catch {
+            print("❌ [DEBUG] Failed to serialize request body: \(error)")
             throw MLXLLMError.networkError
         }
         
@@ -354,20 +428,31 @@ class MLXLLMManager: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ [DEBUG] Invalid HTTP response from OpenAI")
                 throw MLXLLMError.networkError
             }
+            
+            // DEBUG: Log response status and headers
+            print("📥 [DEBUG] OpenAI Response:")
+            print("Status Code: \(httpResponse.statusCode)")
+            print("Headers: \(httpResponse.allHeaderFields)")
             
             // Handle different HTTP status codes more specifically
             switch httpResponse.statusCode {
             case 200:
+                print("✅ [DEBUG] OpenAI request successful")
                 break // Success
             case 401:
+                print("❌ [DEBUG] OpenAI API key invalid or unauthorized")
                 throw MLXLLMError.apiKeyRequired
             case 429:
+                print("⚠️ [DEBUG] OpenAI rate limit exceeded")
                 throw MLXLLMError.networkError  // Rate limit
             case 500...599:
+                print("❌ [DEBUG] OpenAI server error (5xx)")
                 throw MLXLLMError.networkError  // Server error
             default:
+                print("❌ [DEBUG] OpenAI unexpected status code: \(httpResponse.statusCode)")
                 // Try to parse error response for more details
                 if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let error = errorJson["error"] as? [String: Any],
@@ -377,13 +462,26 @@ class MLXLLMManager: ObservableObject {
                 throw MLXLLMError.networkError
             }
             
+            // DEBUG: Log the raw response from OpenAI
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📄 [DEBUG] Raw OpenAI Response:")
+                print(responseString)
+                print("───────────────────────────────────")
+            }
+            
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
                   let firstChoice = choices.first,
                   let message = firstChoice["message"] as? [String: Any],
                   let content = message["content"] as? String else {
+                print("❌ [DEBUG] Failed to parse OpenAI response structure")
                 throw MLXLLMError.invalidResponse
             }
+            
+            // DEBUG: Log the extracted content
+            print("🎯 [DEBUG] OpenAI Content Extracted:")
+            print(content)
+            print("───────────────────────────────────")
             
             // Parse the JSON response from the AI
             guard let responseData = content.data(using: .utf8),
@@ -391,6 +489,8 @@ class MLXLLMManager: ObservableObject {
                   let isValid = analysisJson["is_valid"] as? Bool,
                   let detectedActivity = analysisJson["detected_activity"] as? String,
                   let explanation = analysisJson["explanation"] as? String else {
+                
+                print("⚠️ [DEBUG] Failed to parse AI response as JSON, using fallback analysis")
                 
                 // Fallback parsing similar to MLX version
                 let isDebuggingFocus = userFocus.lowercased().contains("debug")
@@ -407,7 +507,7 @@ class MLXLLMManager: ObservableObject {
                     confidence = 0.5
                 }
                 
-                return MLXAnalysisResult(
+                let fallbackResult = MLXAnalysisResult(
                     is_valid: isValid,
                     explanation: isDebuggingFocus && hasCodeEvidence ? "Debugging code" : "Using \(appName)",
                     detected_activity: detectActivity(text: text, appName: appName),
@@ -415,6 +515,18 @@ class MLXLLMManager: ObservableObject {
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     analysis_source: "remote"
                 )
+                
+                print("📊 [DEBUG] Fallback Analysis Result: \(fallbackResult)")
+                return fallbackResult
+            }
+            
+            // DEBUG: Log successful JSON parsing
+            print("✅ [DEBUG] Successfully parsed AI JSON response:")
+            print("  is_valid: \(isValid)")
+            print("  detected_activity: \(detectedActivity)")
+            print("  explanation: \(explanation)")
+            if let confidence = analysisJson["confidence"] as? Double {
+                print("  confidence: \(confidence)")
             }
             
             var finalIsValid = isValid
@@ -432,7 +544,7 @@ class MLXLLMManager: ObservableObject {
                 }
             }
             
-            return MLXAnalysisResult(
+            let finalResult = MLXAnalysisResult(
                 is_valid: finalIsValid,
                 explanation: finalExplanation,
                 detected_activity: detectedActivity,
@@ -440,6 +552,17 @@ class MLXLLMManager: ObservableObject {
                 timestamp: ISO8601DateFormatter().string(from: Date()),
                 analysis_source: "remote"
             )
+            
+            // DEBUG: Log the final analysis result before returning
+            print("🏁 [DEBUG] Final Remote Analysis Result:")
+            print("  is_valid: \(finalResult.is_valid)")
+            print("  detected_activity: \(finalResult.detected_activity)")
+            print("  explanation: \(finalResult.explanation)")
+            print("  confidence: \(finalResult.confidence)")
+            print("  analysis_source: \(finalResult.analysis_source)")
+            print("───────────────────────────────────")
+            
+            return finalResult
             
         } catch {
             // More specific error handling for network issues
