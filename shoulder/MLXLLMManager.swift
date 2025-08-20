@@ -26,34 +26,40 @@ enum ModelType {
     case remote
 }
 
-struct ModelConfiguration {
+struct AIModelConfiguration {
     let id: String
     let displayName: String
     let type: ModelType
     let description: String
     
     static let availableModels = [
-        ModelConfiguration(
+        AIModelConfiguration(
             id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
             displayName: "Qwen2.5-3B (Local)",
             type: .local,
-            description: "Fast local model using MLX"
+            description: ""
         ),
-        ModelConfiguration(
-            id: "gpt-4o-mini",
-            displayName: "GPT-4o Mini",
+        AIModelConfiguration(
+            id: "gpt-5",
+            displayName: "GPT-5",
             type: .remote,
-            description: "OpenAI's efficient model (requested as gpt-5-mini)"
+            description: ""
         ),
-        ModelConfiguration(
-            id: "gpt-4o",
-            displayName: "GPT-4o Nano",
+        AIModelConfiguration(
+            id: "gpt-5-mini",
+            displayName: "GPT-5 Mini",
             type: .remote,
-            description: "OpenAI's capable model (requested as gpt-5-nano)"
+            description: ""
+        ),
+        AIModelConfiguration(
+            id: "gpt-5-nano",
+            displayName: "GPT-5 Nano",
+            type: .remote,
+            description: ""
         )
     ]
     
-    static func getConfiguration(for modelId: String) -> ModelConfiguration? {
+    static func getConfiguration(for modelId: String) -> AIModelConfiguration? {
         return availableModels.first { $0.id == modelId }
     }
 }
@@ -89,7 +95,7 @@ class MLXLLMManager: ObservableObject {
     }
     
     func loadModel() async {
-        guard let config = ModelConfiguration.getConfiguration(for: selectedModel) else {
+        guard let config = AIModelConfiguration.getConfiguration(for: selectedModel) else {
             modelLoadingMessage = "Unknown model configuration"
             self.isModelLoaded = false
             self.isModelReady = false
@@ -172,7 +178,7 @@ class MLXLLMManager: ObservableObject {
         
         let analysis: MLXAnalysisResult
         
-        guard let config = ModelConfiguration.getConfiguration(for: selectedModel) else {
+        guard let config = AIModelConfiguration.getConfiguration(for: selectedModel) else {
             throw MLXLLMError.unsupportedModel
         }
         
@@ -298,14 +304,39 @@ class MLXLLMManager: ObservableObject {
         request.addValue("Bearer \(openaiApiKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let requestBody = [
+        // Use GPT-5 specific parameters for better performance
+        var requestBody: [String: Any] = [
             "model": selectedModel,
             "messages": [
                 ["role": "user", "content": prompt]
             ],
             "max_tokens": 200,
             "temperature": 0.1
-        ] as [String: Any]
+        ]
+        
+        // Add GPT-5 specific parameters
+        if selectedModel.hasPrefix("gpt-5") {
+            requestBody["reasoning_effort"] = "low"  // Use low reasoning for quick analysis
+            requestBody["verbosity"] = "concise"     // Get concise responses
+            
+            // Use structured outputs for guaranteed JSON format
+            requestBody["response_format"] = [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "activity_analysis",
+                    "schema": [
+                        "type": "object",
+                        "properties": [
+                            "is_valid": ["type": "boolean"],
+                            "detected_activity": ["type": "string"],
+                            "explanation": ["type": "string"],
+                            "confidence": ["type": "number", "minimum": 0, "maximum": 1]
+                        ],
+                        "required": ["is_valid", "detected_activity", "explanation", "confidence"]
+                    ]
+                ]
+            ]
+        }
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
@@ -356,7 +387,8 @@ class MLXLLMManager: ObservableObject {
                     explanation: isDebuggingFocus && hasCodeEvidence ? "Debugging code" : "Using \(appName)",
                     detected_activity: detectActivity(text: text, appName: appName),
                     confidence: confidence,
-                    timestamp: ISO8601DateFormatter().string(from: Date())
+                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                    analysis_source: "remote"
                 )
             }
             
@@ -380,7 +412,8 @@ class MLXLLMManager: ObservableObject {
                 explanation: finalExplanation,
                 detected_activity: detectedActivity,
                 confidence: finalConfidence,
-                timestamp: ISO8601DateFormatter().string(from: Date())
+                timestamp: ISO8601DateFormatter().string(from: Date()),
+                analysis_source: "remote"
             )
             
         } catch {
@@ -452,7 +485,7 @@ class MLXLLMManager: ObservableObject {
     }
     
     func switchModel(to modelID: String) async {
-        guard ModelConfiguration.getConfiguration(for: modelID) != nil else {
+        guard AIModelConfiguration.getConfiguration(for: modelID) != nil else {
             return // Invalid model ID
         }
         
@@ -467,8 +500,8 @@ class MLXLLMManager: ObservableObject {
         await loadModel()
     }
     
-    var currentModelConfig: ModelConfiguration? {
-        return ModelConfiguration.getConfiguration(for: selectedModel)
+    var currentModelConfig: AIModelConfiguration? {
+        return AIModelConfiguration.getConfiguration(for: selectedModel)
     }
     
     var isRemoteModel: Bool {

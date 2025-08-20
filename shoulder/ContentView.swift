@@ -464,17 +464,6 @@ struct ModelSelectionView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Selected Model:")
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                Spacer()
-                if let currentConfig = mlxManager.currentModelConfig {
-                    Text(currentConfig.displayName)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(DesignSystem.Colors.accentBlue)
-                }
-            }
-            
             Picker("AI Model", selection: Binding(
                 get: { mlxManager.selectedModel },
                 set: { newModel in
@@ -485,15 +474,9 @@ struct ModelSelectionView: View {
                     }
                 }
             )) {
-                ForEach(ModelConfiguration.availableModels, id: \.id) { config in
-                    VStack(alignment: .leading) {
-                        Text(config.displayName)
-                            .font(.subheadline)
-                        Text(config.description)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .tag(config.id)
+                ForEach(AIModelConfiguration.availableModels, id: \.id) { config in
+                    Text(config.displayName)
+                        .tag(config.id)
                 }
             }
             .pickerStyle(.menu)
@@ -510,8 +493,6 @@ struct ModelSelectionView: View {
             }
             
             if mlxManager.isRemoteModel {
-                Divider()
-                
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("OpenAI API Key:")
@@ -530,27 +511,7 @@ struct ModelSelectionView: View {
                         TextField("Enter your OpenAI API key", text: $mlxManager.openaiApiKey)
                             .textFieldStyle(.roundedBorder)
                     }
-                    
-                    if mlxManager.openaiApiKey.isEmpty {
-                        Text("⚠️ API key required for remote models")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    } else {
-                        Text("✓ API key configured")
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.activeGreen)
-                    }
-                    
-                    Text("Remote models require an internet connection and API usage fees may apply.")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.textTertiary)
                 }
-            }
-            
-            if let currentConfig = mlxManager.currentModelConfig {
-                Text(currentConfig.description)
-                    .font(.caption)
-                    .foregroundColor(DesignSystem.Colors.textTertiary)
             }
         }
         .padding(.vertical, 4)
