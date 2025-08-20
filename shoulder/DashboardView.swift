@@ -9,39 +9,50 @@ import SwiftUI
 import SwiftData
 
 struct DashboardView: View {
-    @Query(sort: \Item.startTime, order: .reverse) private var items: [Item]
     @EnvironmentObject var screenMonitor: ScreenVisibilityMonitor
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @EnvironmentObject var screenshotManager: ScreenshotManager
-    
-    private var activeSession: Item? {
-        items.first { $0.endTime == nil }
-    }
-    
-    private var todaySessions: [Item] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        return items.filter { calendar.startOfDay(for: $0.startTime) == today }
-    }
-    
-    private var totalTimeToday: TimeInterval {
-        todaySessions.compactMap { $0.duration }.reduce(0, +)
-    }
+    @EnvironmentObject var focusManager: FocusSessionManager
+    @State private var analysisError: String?
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: DesignSystem.Spacing.large) {
-                headerSection
-                todaysSummary
-                if mlxLLMManager.isModelLoaded {
-                    aiInsightsSection
+        GeometryReader { geometry in
+            ZStack {
+                backgroundGradient
+                
+                VStack(spacing: DesignSystem.Spacing.xxLarge) {
+                    Spacer()
+                    
+                    // Main Focus Display
+                    focusDisplay
+                    
+                    // Focus Status Indicator
+                    if mlxLLMManager.isModelLoaded {
+                        focusStatusIndicator
+                    }
+                    
+                    // Error message
+                    if let error = analysisError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(DesignSystem.Spacing.small)
+                            .background(
+                                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                                    .fill(Color.red.opacity(0.1))
+                            )
+                    }
+                    
+                    // End Session Button
+                    endSessionButton
+                    
+                    Spacer()
                 }
-                activeSessionCard
-                recentActivitySection
+                .padding(DesignSystem.Spacing.xxLarge)
+                .frame(maxWidth: 800)
+                .frame(maxWidth: .infinity)
             }
-            .padding(DesignSystem.Spacing.large)
         }
-        .background(backgroundGradient)
     }
     
     private var backgroundGradient: some View {
@@ -57,351 +68,185 @@ struct DashboardView: View {
         .ignoresSafeArea()
     }
     
-    private var headerSection: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xSmall) {
-                Text("Dashboard")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text(Date(), format: .dateTime.weekday(.wide).month(.wide).day())
-                    .font(.title3)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
+    private var focusDisplay: some View {
+        VStack(spacing: DesignSystem.Spacing.large) {
+            // Focus Text
+            Text(focusManager.focusText.isEmpty ? "No Focus Set" : focusManager.focusText)
+                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [DesignSystem.Colors.accentBlue, DesignSystem.Colors.accentPurple],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.5)
+                .padding(.horizontal)
             
-            Spacer()
-        }
-    }
-    
-    private var todaysSummary: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xSmall) {
-                Text("Today's Activity")
-                    .font(.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
+            // Circular Progress with Time
+            ZStack {
+                // Background circle
+                Circle()
+                    .stroke(
+                        Color(NSColor.separatorColor).opacity(0.2),
+                        lineWidth: 20
+                    )
+                    .frame(width: 280, height: 280)
                 
-                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xSmall) {
-                    Text(formatDuration(totalTimeToday))
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                    Text("• \(todaySessions.count) sessions")
-                        .font(.subheadline)
+                // Progress circle
+                Circle()
+                    .trim(from: 0, to: focusManager.progressPercentage)
+                    .stroke(
+                        LinearGradient(
+                            colors: [DesignSystem.Colors.accentBlue, DesignSystem.Colors.accentPurple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 20, lineCap: .round)
+                    )
+                    .frame(width: 280, height: 280)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.5), value: focusManager.progressPercentage)
+                
+                // Time display
+                VStack(spacing: DesignSystem.Spacing.xSmall) {
+                    Text(focusManager.formattedTimeRemaining)
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
+                        .foregroundColor(DesignSystem.Colors.textPrimary)
+                    
+                    Text("remaining")
+                        .font(.title3)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
             }
-            Spacer()
+            .padding(.vertical, DesignSystem.Spacing.large)
         }
-        .padding(DesignSystem.Spacing.medium)
-        .glassCard()
     }
     
-    private var activeSessionCard: some View {
+    private var focusStatusIndicator: some View {
         Group {
-            if let active = activeSession {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.medium) {
-                    HStack {
-                        Text("Current Activity")
-                            .font(.headline)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
+            if let analysis = mlxLLMManager.lastAnalysis {
+                HStack(spacing: DesignSystem.Spacing.medium) {
+                    // Focus indicator
+                    HStack(spacing: DesignSystem.Spacing.small) {
+                        Image(systemName: analysis.is_valid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(analysis.is_valid ? DesignSystem.Colors.activeGreen : Color.red)
                         
-                        Spacer()
-                        
-                        PulsingDot(color: DesignSystem.Colors.activeGreen, size: 6)
-                    }
-                    
-                    HStack(spacing: DesignSystem.Spacing.medium) {
-                        AppIconView(appName: active.appName, size: 48)
-                        
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxSmall) {
-                            Text(active.appName)
-                                .font(.title3)
-                                .fontWeight(.semibold)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(analysis.is_valid ? "On Focus" : "Off Focus")
+                                .font(.headline)
+                                .foregroundColor(DesignSystem.Colors.textPrimary)
                             
-                            if let windowTitle = active.windowTitle {
-                                Text(windowTitle)
-                                    .font(.caption)
-                                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                                    .lineLimit(1)
-                            }
-                            
-                            HStack {
-                                Image(systemName: "clock")
-                                    .font(.caption2)
-                                Text("Started \(active.startTime, format: .dateTime.hour().minute())")
-                                    .font(.caption)
-                            }
-                            .foregroundColor(DesignSystem.Colors.textTertiary)
-                        }
-                        
-                        Spacer()
-                        
-                        VStack {
-                            Text(formatElapsedTime(since: active.startTime))
-                                .font(.system(size: 24, weight: .bold, design: .rounded))
-                                .foregroundColor(DesignSystem.Colors.accentBlue)
-                            Text("elapsed")
-                                .font(.caption2)
-                                .foregroundColor(DesignSystem.Colors.textTertiary)
+                            Text(analysis.explanation)
+                                .font(.caption)
+                                .foregroundColor(DesignSystem.Colors.textSecondary)
+                                .lineLimit(1)
                         }
                     }
-                }
-                .padding(DesignSystem.Spacing.large)
-                .glassCard()
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
-                        .stroke(DesignSystem.Colors.activeGreen.opacity(0.3), lineWidth: 2)
-                )
-            }
-        }
-    }
-    
-    private var aiInsightsSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.medium) {
-            // Blocking Status Indicator
-            if ApplicationBlockingManager.shared.isBlockingEnabled {
-                HStack {
-                    Image(systemName: ApplicationBlockingManager.shared.focusModeActive ? "lock.shield.fill" : "shield.fill")
-                        .foregroundColor(ApplicationBlockingManager.shared.focusModeActive ? .orange : .blue)
-                    
-                    Text(ApplicationBlockingManager.shared.focusModeActive ? "Focus Mode Active" : "Blocking Enabled")
-                        .font(.caption)
-                        .fontWeight(.medium)
                     
                     Spacer()
                     
-                    let stats = ApplicationBlockingManager.shared.getBlockingStatistics()
-                    if stats.todayBlocked > 0 {
-                        Text("\(stats.todayBlocked) blocked today")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    // Blocking indicator if active
+                    if ApplicationBlockingManager.shared.focusModeActive {
+                        HStack(spacing: DesignSystem.Spacing.xSmall) {
+                            Image(systemName: "lock.shield.fill")
+                                .foregroundColor(.orange)
+                            Text("Blocking Active")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
                     }
                 }
-                .padding(8)
+                .padding(DesignSystem.Spacing.medium)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(ApplicationBlockingManager.shared.focusModeActive ? 
-                              Color.orange.opacity(0.1) : Color.blue.opacity(0.1))
-                )
-            }
-            
-            HStack {
-                Image(systemName: "brain")
-                    .font(.title3)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [DesignSystem.Colors.accentPurple, DesignSystem.Colors.accentBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                                .stroke(
+                                    analysis.is_valid ? DesignSystem.Colors.activeGreen.opacity(0.2) : Color.red.opacity(0.2),
+                                    lineWidth: 1
+                                )
                         )
-                    )
-                Text("AI Insights")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                if mlxLLMManager.isAnalyzing {
-                    // Simple loading indicator instead of ProgressView
+                )
+            } else if mlxLLMManager.isAnalyzing {
+                HStack {
                     HStack(spacing: 4) {
                         ForEach(0..<3) { index in
                             Circle()
                                 .fill(DesignSystem.Colors.accentBlue)
-                                .frame(width: 4, height: 4)
-                                .opacity(mlxLLMManager.isAnalyzing ? 1.0 : 0.3)
+                                .frame(width: 6, height: 6)
+                                .opacity(1.0)
+                                .animation(
+                                    Animation.easeInOut(duration: 0.6)
+                                        .repeatForever()
+                                        .delay(Double(index) * 0.2),
+                                    value: mlxLLMManager.isAnalyzing
+                                )
                         }
                     }
-                } else if mlxLLMManager.lastAnalysis != nil {
-                    Button(action: analyzeCurrentSession) {
-                        Label("Analyze Now", systemImage: "arrow.clockwise")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(DesignSystem.Colors.accentBlue)
-                }
-            }
-            
-            if let analysis = mlxLLMManager.lastAnalysis {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.small) {
-                    // Focus status
-                    HStack {
-                        Image(systemName: analysis.is_valid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundColor(analysis.is_valid ? DesignSystem.Colors.activeGreen : Color.red)
-                        Text(analysis.is_valid ? "On Focus" : "Off Focus")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(DesignSystem.Colors.textPrimary)
-                        
-                        Spacer()
-                        
-                        Text("\(Int(analysis.confidence * 100))% confident")
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                    }
-                    
-                    // Current activity
-                    Text("Activity: \(analysis.detected_activity)")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.textPrimary)
-                    
-                    // Explanation
-                    Text(analysis.explanation)
+                    Text("Analyzing focus...")
                         .font(.caption)
                         .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .lineLimit(2)
-                    
-                    Divider()
-                    
-                    // Focus setting
-                    HStack {
-                        Text("Focus:")
-                            .font(.caption)
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                        Text(mlxLLMManager.userFocus)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(DesignSystem.Colors.accentPurple)
-                    }
                 }
                 .padding(DesignSystem.Spacing.medium)
-                .glassCard()
-            } else {
-                Text("AI analysis will appear here once activity is detected")
-                    .font(.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-                    .padding(DesignSystem.Spacing.medium)
-                    .frame(maxWidth: .infinity)
-                    .glassCard()
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.medium)
+                        .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                )
             }
         }
     }
     
-    private func productivityColor(for score: Double) -> Color {
-        if score >= 0.7 {
-            return DesignSystem.Colors.activeGreen
-        } else if score >= 0.4 {
-            return Color.orange
-        } else {
-            return Color.red
+    private var endSessionButton: some View {
+        Button(action: {
+            focusManager.endSession()
+        }) {
+            HStack {
+                Image(systemName: "stop.fill")
+                Text("End Focus Session")
+                    .fontWeight(.semibold)
+            }
+            .font(.title3)
+            .foregroundColor(.white)
+            .padding(.horizontal, DesignSystem.Spacing.large)
+            .padding(.vertical, DesignSystem.Spacing.medium)
+            .background(
+                LinearGradient(
+                    colors: [Color.red.opacity(0.8), Color.red],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(DesignSystem.CornerRadius.medium)
+            .shadow(
+                color: DesignSystem.Shadow.medium.color,
+                radius: DesignSystem.Shadow.medium.radius,
+                x: DesignSystem.Shadow.medium.x,
+                y: DesignSystem.Shadow.medium.y
+            )
         }
+        .buttonStyle(.plain)
     }
     
     private func analyzeCurrentSession() {
         guard let ocrText = screenshotManager.lastOCRText else { return }
         
-        let appName = activeSession?.appName ?? "Unknown"
-        
         Task {
             do {
                 _ = try await mlxLLMManager.analyzeScreenshot(
                     ocrText: ocrText,
-                    appName: appName,
-                    windowTitle: activeSession?.windowTitle
+                    appName: "",
+                    windowTitle: nil
                 )
             } catch {
-            }
-        }
-    }
-    
-    private var recentActivitySection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.medium) {
-            HStack {
-                Text("Recent Activity")
-                    .font(.headline)
-                
-                Spacer()
-                
-                NavigationLink(destination: SessionsListView()) {
-                    Text("View All")
-                        .font(.caption)
-                        .foregroundColor(DesignSystem.Colors.accentBlue)
+                analysisError = "Analysis failed: \(error.localizedDescription)"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    analysisError = nil
                 }
             }
-            
-            VStack(spacing: DesignSystem.Spacing.small) {
-                ForEach(items.prefix(5)) { item in
-                    RecentActivityRow(item: item)
-                }
-            }
-        }
-    }
-    
-    
-    private func formatDuration(_ duration: TimeInterval) -> String {
-        let hours = Int(duration) / 3600
-        let minutes = Int(duration) % 3600 / 60
-        
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else {
-            return "\(minutes)m"
-        }
-    }
-    
-    private func formatElapsedTime(since startTime: Date) -> String {
-        let elapsed = Date().timeIntervalSince(startTime)
-        let minutes = Int(elapsed) / 60
-        let seconds = Int(elapsed) % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-}
-
-struct RecentActivityRow: View {
-    let item: Item
-    
-    var body: some View {
-        HStack(spacing: DesignSystem.Spacing.small) {
-            AppIconView(appName: item.appName, size: 32)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.appName)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                
-                if let windowTitle = item.windowTitle {
-                    Text(windowTitle)
-                        .font(.caption2)
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 2) {
-                if let duration = item.duration {
-                    Text(formatShortDuration(duration))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                } else {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(DesignSystem.Colors.activeGreen)
-                            .frame(width: 6, height: 6)
-                        Text("Active")
-                            .font(.caption2)
-                    }
-                }
-                
-                Text(item.startTime, format: .dateTime.hour().minute())
-                    .font(.caption2)
-                    .foregroundColor(DesignSystem.Colors.textTertiary)
-            }
-        }
-        .padding(DesignSystem.Spacing.small)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        )
-    }
-    
-    private func formatShortDuration(_ duration: TimeInterval) -> String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        if minutes > 0 {
-            return "\(minutes)m"
-        } else {
-            return "\(seconds)s"
         }
     }
 }
-
-
