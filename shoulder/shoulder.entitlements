@@ -14,5 +14,13 @@
 	<true/>
 	<key>com.apple.security.files.bookmarks.document-scope</key>
 	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.personal-information.location</key>
+	<false/>
+	<key>com.apple.security.device.audio-input</key>
+	<false/>
 </dict>
 </plist>
