@@ -16,6 +16,46 @@ enum MLXLLMError: Error {
     case invalidResponse
     case analysisTimeout
     case modelDownloadFailed
+    case apiKeyRequired
+    case networkError
+    case unsupportedModel
+}
+
+enum ModelType {
+    case local
+    case remote
+}
+
+struct ModelConfiguration {
+    let id: String
+    let displayName: String
+    let type: ModelType
+    let description: String
+    
+    static let availableModels = [
+        ModelConfiguration(
+            id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
+            displayName: "Qwen2.5-3B (Local)",
+            type: .local,
+            description: "Fast local model using MLX"
+        ),
+        ModelConfiguration(
+            id: "gpt-4o-mini",
+            displayName: "GPT-4o Mini",
+            type: .remote,
+            description: "OpenAI's efficient model (requested as gpt-5-mini)"
+        ),
+        ModelConfiguration(
+            id: "gpt-4o",
+            displayName: "GPT-4o Nano",
+            type: .remote,
+            description: "OpenAI's capable model (requested as gpt-5-nano)"
+        )
+    ]
+    
+    static func getConfiguration(for modelId: String) -> ModelConfiguration? {
+        return availableModels.first { $0.id == modelId }
+    }
 }
 
 struct MLXAnalysisResult: Codable {
@@ -37,6 +77,7 @@ class MLXLLMManager: ObservableObject {
     @Published var modelLoadingMessage = "Initializing MLX..."
     @AppStorage("userFocus") var userFocus: String = "Writing code"
     @AppStorage("selectedModel") var selectedModel: String = "mlx-community/Qwen2.5-3B-Instruct-4bit"
+    @AppStorage("openaiApiKey") var openaiApiKey: String = ""
     
     private let analysisQueue = DispatchQueue(label: "com.shoulder.mlx.analysis", qos: .userInitiated)
     private var modelContainer: ModelContainer?
@@ -48,6 +89,22 @@ class MLXLLMManager: ObservableObject {
     }
     
     func loadModel() async {
+        guard let config = ModelConfiguration.getConfiguration(for: selectedModel) else {
+            modelLoadingMessage = "Unknown model configuration"
+            self.isModelLoaded = false
+            self.isModelReady = false
+            return
+        }
+        
+        switch config.type {
+        case .local:
+            await loadMLXModel()
+        case .remote:
+            await validateRemoteModel()
+        }
+    }
+    
+    private func loadMLXModel() async {
         modelLoadingMessage = "Loading MLX model..."
         
         do {
@@ -72,13 +129,29 @@ class MLXLLMManager: ObservableObject {
             self.isModelReady = true
             self.modelLoadingMessage = "MLX model ready!"
             
-            
         } catch {
             modelLoadingMessage = "Failed to load model: \(error.localizedDescription)"
-            
             self.isModelLoaded = false
             self.isModelReady = false
         }
+    }
+    
+    private func validateRemoteModel() async {
+        modelLoadingMessage = "Validating remote model..."
+        
+        if openaiApiKey.isEmpty {
+            modelLoadingMessage = "API key required for remote models"
+            self.isModelLoaded = false
+            self.isModelReady = false
+            return
+        }
+        
+        // Clean up any existing local model
+        modelContainer = nil
+        
+        self.isModelLoaded = true
+        self.isModelReady = true
+        modelLoadingMessage = "Remote model ready!"
     }
     
     func analyzeScreenshot(ocrText: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
@@ -99,17 +172,31 @@ class MLXLLMManager: ObservableObject {
         
         let analysis: MLXAnalysisResult
         
-        if let container = modelContainer {
-            // Use MLX model for analysis
-            analysis = try await performMLXAnalysis(
-                container: container,
+        guard let config = ModelConfiguration.getConfiguration(for: selectedModel) else {
+            throw MLXLLMError.unsupportedModel
+        }
+        
+        switch config.type {
+        case .local:
+            if let container = modelContainer {
+                // Use MLX model for analysis
+                analysis = try await performMLXAnalysis(
+                    container: container,
+                    text: truncatedText,
+                    appName: appName,
+                    windowTitle: windowTitle
+                )
+            } else {
+                throw MLXLLMError.modelNotLoaded
+            }
+            
+        case .remote:
+            // Use remote API for analysis
+            analysis = try await performRemoteAnalysis(
                 text: truncatedText,
                 appName: appName,
                 windowTitle: windowTitle
             )
-        } else {
-            // No fallback - require model to be loaded
-            throw MLXLLMError.modelNotLoaded
         }
         
         // Analysis completed - timing calculation removed as it was unused
@@ -181,6 +268,168 @@ class MLXLLMManager: ObservableObject {
         )
     }
     
+    private func performRemoteAnalysis(text: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
+        guard !openaiApiKey.isEmpty else {
+            throw MLXLLMError.apiKeyRequired
+        }
+        
+        let prompt = """
+        You are an AI assistant analyzing user activity. The user's stated focus is: "\(userFocus)".
+        
+        Current application: \(appName)
+        Window title: \(windowTitle ?? "N/A")
+        Screen content (OCR text, first 500 chars): \(String(text.prefix(500)))
+        
+        IMPORTANT RULE: If the user's focus is "Debugging" and there is ANY evidence of code, programming languages, development tools, or technical content in the screen content, consider the activity as aligned (is_valid: true) with high confidence.
+        
+        Based on this information, provide a JSON response with the following structure:
+        {
+            "is_valid": true/false (whether the activity aligns with the user's focus),
+            "detected_activity": "what user is doing (3-5 words max)",
+            "explanation": "2-7 word reason (e.g., 'browsing social media', 'reading documentation', 'watching videos')",
+            "confidence": 0.0-1.0 (confidence in the assessment)
+        }
+        
+        Respond ONLY with valid JSON, no additional text.
+        """
+        
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(openaiApiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let requestBody = [
+            "model": selectedModel,
+            "messages": [
+                ["role": "user", "content": prompt]
+            ],
+            "max_tokens": 200,
+            "temperature": 0.1
+        ] as [String: Any]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        } catch {
+            throw MLXLLMError.networkError
+        }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                throw MLXLLMError.networkError
+            }
+            
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let firstChoice = choices.first,
+                  let message = firstChoice["message"] as? [String: Any],
+                  let content = message["content"] as? String else {
+                throw MLXLLMError.invalidResponse
+            }
+            
+            // Parse the JSON response from the AI
+            guard let responseData = content.data(using: .utf8),
+                  let analysisJson = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+                  let isValid = analysisJson["is_valid"] as? Bool,
+                  let detectedActivity = analysisJson["detected_activity"] as? String,
+                  let explanation = analysisJson["explanation"] as? String else {
+                
+                // Fallback parsing similar to MLX version
+                let isDebuggingFocus = userFocus.lowercased().contains("debug")
+                let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
+                
+                let isValid: Bool
+                let confidence: Double
+                
+                if isDebuggingFocus && hasCodeEvidence {
+                    isValid = true
+                    confidence = 0.85
+                } else {
+                    isValid = content.lowercased().contains("aligns") || content.lowercased().contains("focused")
+                    confidence = 0.5
+                }
+                
+                return MLXAnalysisResult(
+                    is_valid: isValid,
+                    explanation: isDebuggingFocus && hasCodeEvidence ? "Debugging code" : "Using \(appName)",
+                    detected_activity: detectActivity(text: text, appName: appName),
+                    confidence: confidence,
+                    timestamp: ISO8601DateFormatter().string(from: Date())
+                )
+            }
+            
+            var finalIsValid = isValid
+            var finalConfidence = (analysisJson["confidence"] as? Double) ?? 0.7
+            var finalExplanation = explanation
+            
+            // Apply lenient "Debugging" focus rule even when JSON parsing succeeds
+            let isDebuggingFocus = userFocus.lowercased().contains("debug")
+            if isDebuggingFocus && !isValid {
+                let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
+                if hasCodeEvidence {
+                    finalIsValid = true
+                    finalConfidence = max(finalConfidence, 0.75)
+                    finalExplanation = "Coding: \(detectedActivity)"
+                }
+            }
+            
+            return MLXAnalysisResult(
+                is_valid: finalIsValid,
+                explanation: finalExplanation,
+                detected_activity: detectedActivity,
+                confidence: finalConfidence,
+                timestamp: ISO8601DateFormatter().string(from: Date())
+            )
+            
+        } catch {
+            throw MLXLLMError.networkError
+        }
+    }
+    
+    private func detectCodeEvidence(text: String, appName: String) -> Bool {
+        let textLower = text.lowercased()
+        let appLower = appName.lowercased()
+        
+        // Check for development-related applications
+        let devApps = ["xcode", "vscode", "visual studio", "sublime", "atom", "intellij", 
+                       "terminal", "iterm", "console", "github", "sourcetree", "tower"]
+        if devApps.contains(where: { appLower.contains($0) }) {
+            return true
+        }
+        
+        // Check for programming language keywords
+        let codeKeywords = ["function", "class", "struct", "import", "export", "return", 
+                           "if", "else", "for", "while", "var", "let", "const", "def", 
+                           "public", "private", "async", "await", "try", "catch", "throw",
+                           "{", "}", "[", "]", "(", ")", "=>", "->", "::", "//", "/*", "*/",
+                           "git", "npm", "yarn", "pip", "cargo", "swift", "python", "javascript",
+                           "typescript", "rust", "java", "cpp", "csharp", "ruby", "golang"]
+        
+        let keywordCount = codeKeywords.filter { textLower.contains($0) }.count
+        
+        // If we find at least 2 code-related keywords, consider it code evidence
+        return keywordCount >= 2
+    }
+    
+    private func detectActivity(text: String, appName: String) -> String {
+        let textLower = text.lowercased()
+        let appLower = appName.lowercased()
+        
+        if appLower.contains("xcode") || appLower.contains("vscode") || 
+           textLower.contains("function") || textLower.contains("class") {
+            return "coding"
+        } else if appLower.contains("safari") || appLower.contains("chrome") {
+            return "browsing"
+        } else if appLower.contains("slack") || appLower.contains("messages") {
+            return "messaging"
+        } else if appLower.contains("pages") || appLower.contains("word") {
+            return "writing"
+        } else {
+            return "working"
+        }
+    }
     
     private func saveAnalysisResult(_ result: MLXAnalysisResult, appName: String) async {
         let dateString = DateFormatters.fileDate.string(from: Date())
@@ -203,6 +452,10 @@ class MLXLLMManager: ObservableObject {
     }
     
     func switchModel(to modelID: String) async {
+        guard ModelConfiguration.getConfiguration(for: modelID) != nil else {
+            return // Invalid model ID
+        }
+        
         selectedModel = modelID
         isModelLoaded = false
         isModelReady = false
@@ -212,6 +465,14 @@ class MLXLLMManager: ObservableObject {
         
         // Load new model
         await loadModel()
+    }
+    
+    var currentModelConfig: ModelConfiguration? {
+        return ModelConfiguration.getConfiguration(for: selectedModel)
+    }
+    
+    var isRemoteModel: Bool {
+        return currentModelConfig?.type == .remote
     }
     
     deinit {
@@ -240,9 +501,16 @@ struct MLXStatusView: View {
                     .font(.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             } else {
-                Text("AI Ready")
-                    .font(.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("AI Ready")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.textSecondary)
+                    if let config = mlxManager.currentModelConfig {
+                        Text(config.displayName)
+                            .font(.caption2)
+                            .foregroundColor(DesignSystem.Colors.textTertiary)
+                    }
+                }
             }
         }
     }
