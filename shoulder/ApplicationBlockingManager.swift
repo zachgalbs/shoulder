@@ -82,9 +82,9 @@ class ApplicationBlockingManager: ObservableObject {
             return
         }
         
-        // Only process notifications from actual LLM analysis
-        guard analysis.analysis_source == "llm" else {
-            // Silently ignore non-LLM analysis results
+        // Only process notifications from actual AI analysis (both local and remote)
+        guard analysis.analysis_source == "llm" || analysis.analysis_source == "remote" else {
+            // Silently ignore non-AI analysis results
             return
         }
         
