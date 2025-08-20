@@ -13,7 +13,7 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 - **shoulderApp.swift**: Main app entry point with SwiftData model container configured for in-memory storage only
 - **ScreenVisibilityMonitor**: Tracks application switching using NSWorkspace notifications and Accessibility APIs to capture window titles
 - **ScreenshotManager**: Handles automated screenshot capture using CGDisplayCreateImage and OCR text extraction using Vision framework, saving to `~/src/shoulder/screenshots/YYYY-MM-DD/`
-- **MLXLLMManager**: Native MLX-based LLM manager for AI-powered productivity analysis, saving insights to `~/src/shoulder/analyses/YYYY-MM-DD/`
+- **MLXLLMManager**: AI model manager supporting both local (MLX) and remote (OpenAI GPT-5) models for productivity analysis, saving insights to `~/src/shoulder/analyses/YYYY-MM-DD/`
 - **Item.swift**: SwiftData model representing app usage sessions with start/end times and calculated duration
 - **ContentView.swift**: Main UI with navigation split view showing session list and detail views
 - **DashboardView.swift**: Primary dashboard with activity overview, AI insights, and real-time session monitoring
@@ -39,6 +39,29 @@ Shoulder is a macOS SwiftUI app that monitors application usage and captures per
 - ScreenCaptureKit/Core Graphics for screenshot functionality
 - Vision framework for OCR text extraction
 - AppKit for macOS integration
+
+## AI Models
+
+The app supports multiple AI models for productivity analysis through `MLXLLMManager`:
+
+### Supported Models
+
+1. **Local Models (MLX-based)**:
+   - `mlx-community/Qwen2.5-3B-Instruct-4bit`: Fast local model using Apple's MLX framework, runs on-device without internet
+
+2. **Remote Models (OpenAI GPT-5)**:
+   - `gpt-5`: OpenAI's most advanced model for complex reasoning tasks
+   - `gpt-5-mini`: Balanced performance and cost for most applications  
+   - `gpt-5-nano`: Lightweight and economical for real-time tasks
+
+### Important Notes
+
+- **Model Configuration**: The model configuration struct is named `AIModelConfiguration` (not `ModelConfiguration`) to avoid conflicts with SwiftData's `ModelConfiguration`
+- **GPT-5 Parameters**: When using GPT-5 models, the app automatically includes:
+  - `reasoning_effort`: "medium" (controls reasoning depth)
+  - `verbosity`: "low" (keeps responses concise for JSON parsing)
+- **API Keys**: Remote models require an OpenAI API key configured in the app settings
+- **Model Switching**: Users can switch between models via the Settings tab in the UI
 
 ## Development Commands
 

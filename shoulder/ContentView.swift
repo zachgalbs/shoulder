@@ -305,8 +305,16 @@ struct ModelSelectionView: View {
                 }
             )) {
                 ForEach(AIModelConfiguration.availableModels, id: \.id) { config in
-                    Text(config.displayName)
-                        .tag(config.id)
+                    VStack(alignment: .leading) {
+                        Text(config.displayName)
+                            .font(.subheadline)
+                        if !config.description.isEmpty {
+                            Text(config.description)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .tag(config.id)
                 }
             }
             .pickerStyle(.menu)
