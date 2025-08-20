@@ -79,7 +79,7 @@ class ScreenshotManager: ObservableObject {
         
         for pending in pendingAnalyses {
             do {
-                let result = try await mlxManager.analyzeScreenshot(
+                _ = try await mlxManager.analyzeScreenshot(
                     ocrText: pending.ocrText,
                     appName: pending.appName,
                     windowTitle: nil
@@ -415,7 +415,7 @@ class ScreenshotManager: ObservableObject {
         
         Task {
             do {
-                let result = try await mlxManager.analyzeScreenshot(
+                _ = try await mlxManager.analyzeScreenshot(
                     ocrText: ocrText,
                     appName: appName,
                     windowTitle: nil

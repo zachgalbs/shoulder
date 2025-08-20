@@ -96,9 +96,6 @@ class MLXLLMManager: ObservableObject {
         
         let truncatedText = String(ocrText.prefix(1500))
         
-        
-        let startTime = Date()
-        
         let analysis: MLXAnalysisResult
         
         if let container = modelContainer {
@@ -114,8 +111,7 @@ class MLXLLMManager: ObservableObject {
             throw MLXLLMError.modelNotLoaded
         }
         
-        let elapsed = Date().timeIntervalSince(startTime)
-        
+        // Analysis completed - timing calculation removed as it was unused
         
         lastAnalysis = analysis
         analysisHistory[appName] = analysis
