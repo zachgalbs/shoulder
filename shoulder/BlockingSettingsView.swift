@@ -31,10 +31,14 @@ struct BlockingSettingsView: View {
             Text("Application Blocking")
                 .font(.headline)
             
-            Toggle("Enable Application Blocking", isOn: $blockingManager.isBlockingEnabled)
-                .onChange(of: blockingManager.isBlockingEnabled) { _, newValue in
-                    blockingManager.toggleBlocking()
+            Toggle("Enable Application Blocking", isOn: Binding(
+                get: { blockingManager.isBlockingEnabled },
+                set: { newValue in
+                    if blockingManager.isBlockingEnabled != newValue {
+                        blockingManager.toggleBlocking()
+                    }
                 }
+            ))
             
             Text("When enabled, distracting applications will be automatically closed based on AI analysis.")
                 .font(.caption)
