@@ -82,15 +82,15 @@ class ApplicationBlockingManager: ObservableObject {
             return
         }
         
-        
-        guard isBlockingEnabled else {
-            return
-        }
-        
         Task { @MainActor in
-            if !analysis.is_valid && analysis.confidence >= blockingConfidenceThreshold {
+            // Send unfocused notification if enabled and activity is off-task
+            if unfocusedNotificationsEnabled && !analysis.is_valid && analysis.confidence >= 0.5 {
+                showUnfocusedNotification(appName: appName, analysis: analysis)
+            }
+            
+            // Handle blocking if enabled
+            if isBlockingEnabled && !analysis.is_valid && analysis.confidence >= blockingConfidenceThreshold {
                 await blockApplicationIfNeeded(appName: appName, analysis: analysis)
-            } else {
             }
         }
     }
@@ -151,12 +151,12 @@ class ApplicationBlockingManager: ObservableObject {
         
         showBlockingNotification(appName: appName, reason: reason)
         
-        let terminated = app.terminate()
+        _ = app.terminate()
         
         try? await Task.sleep(nanoseconds: 100_000_000)
         
         if app.isTerminated == false {
-            let forceTerminated = app.forceTerminate()
+            _ = app.forceTerminate()
         }
         
         logBlockingEvent(appName: appName, reason: reason)
@@ -166,6 +166,21 @@ class ApplicationBlockingManager: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "Application Blocked"
         content.body = reason ?? "\(appName) was closed to help you maintain focus."
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
+    private func showUnfocusedNotification(appName: String, analysis: MLXAnalysisResult) {
+        let content = UNMutableNotificationContent()
+        content.title = "⚠️ Off-Task Activity Detected"
+        content.body = "You're using \(appName). \(analysis.explanation)"
         content.sound = .default
         
         let request = UNNotificationRequest(
@@ -236,6 +251,11 @@ class ApplicationBlockingManager: ObservableObject {
         saveSettings()
     }
     
+    func toggleUnfocusedNotifications() {
+        unfocusedNotificationsEnabled.toggle()
+        saveSettings()
+    }
+    
     @MainActor
     private func closeAllDistractingApps() {
         Task {
@@ -271,3 +291,4 @@ extension ApplicationBlockingManager {
         return (recentlyBlockedApps.count, today, mostBlocked)
     }
 }
+

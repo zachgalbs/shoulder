@@ -192,7 +192,7 @@ struct FocusSelectionView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 80)
                         .disabled(!useCustomDuration)
-                        .onChange(of: customDuration) { newValue in
+                        .onChange(of: customDuration) { _, newValue in
                             if useCustomDuration, let minutes = Int(newValue), minutes > 0 {
                                 selectedDuration = minutes
                             }
@@ -374,3 +374,4 @@ struct DurationButton: View {
         }
     }
 }
+

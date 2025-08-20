@@ -10,6 +10,7 @@ struct BlockingSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                notificationSection
                 blockingToggleSection
                 
                 if blockingManager.isBlockingEnabled {
@@ -26,13 +27,29 @@ struct BlockingSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
+    private var notificationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Notifications")
+                .font(.headline)
+            
+            Toggle("Notify when unfocused", isOn: $blockingManager.unfocusedNotificationsEnabled)
+                .onChange(of: blockingManager.unfocusedNotificationsEnabled) {
+                    blockingManager.toggleUnfocusedNotifications()
+                }
+            
+            Text("Get notified whenever your activities don't align with your stated focus.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    
     private var blockingToggleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Application Blocking")
                 .font(.headline)
             
             Toggle("Enable Application Blocking", isOn: $blockingManager.isBlockingEnabled)
-                .onChange(of: blockingManager.isBlockingEnabled) { _, newValue in
+                .onChange(of: blockingManager.isBlockingEnabled) {
                     blockingManager.toggleBlocking()
                 }
             
@@ -49,7 +66,7 @@ struct BlockingSettingsView: View {
             
             HStack {
                 Toggle("Focus Mode", isOn: $blockingManager.focusModeActive)
-                    .onChange(of: blockingManager.focusModeActive) { _, _ in
+                    .onChange(of: blockingManager.focusModeActive) {
                         blockingManager.toggleFocusMode()
                     }
                 
