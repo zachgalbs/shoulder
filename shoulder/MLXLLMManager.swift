@@ -142,8 +142,8 @@ class MLXLLMManager: ObservableObject {
         Based on this information, provide a JSON response with the following structure:
         {
             "is_valid": true/false (whether the activity aligns with the user's focus),
-            "detected_activity": "brief description of what the user is doing",
-            "explanation": "brief explanation of why this does or doesn't align with their focus",
+            "detected_activity": "what user is doing (3-5 words max)",
+            "explanation": "2-7 word reason (e.g., 'browsing social media', 'reading documentation', 'watching videos')",
             "confidence": 0.0-1.0 (confidence in the assessment)
         }
         
@@ -183,8 +183,8 @@ class MLXLLMManager: ObservableObject {
             
             let detectedActivity = detectActivity(text: text, appName: appName)
             let explanation = isDebuggingFocus && hasCodeEvidence ? 
-                "Code-related activity detected, aligned with debugging focus." : 
-                "Analysis based on \(appName) usage."
+                "Debugging code" : 
+                "Using \(appName)"
             
             return MLXAnalysisResult(
                 is_valid: isValid,
@@ -208,7 +208,7 @@ class MLXLLMManager: ObservableObject {
                 // Override the model's decision for debugging focus with code evidence
                 finalIsValid = true
                 finalConfidence = max(finalConfidence, 0.75) // Ensure at least 75% confidence
-                finalExplanation = "Code-related activity detected. \(explanation)"
+                finalExplanation = "Coding: \(detectedActivity)"
             }
         }
         
@@ -252,15 +252,15 @@ class MLXLLMManager: ObservableObject {
         
         if appLower.contains("xcode") || appLower.contains("vscode") || 
            textLower.contains("function") || textLower.contains("class") {
-            return "Programming/Development"
+            return "coding"
         } else if appLower.contains("safari") || appLower.contains("chrome") {
-            return "Web Browsing"
+            return "browsing"
         } else if appLower.contains("slack") || appLower.contains("messages") {
-            return "Communication"
+            return "messaging"
         } else if appLower.contains("pages") || appLower.contains("word") {
-            return "Writing/Documentation"
+            return "writing"
         } else {
-            return "General Computer Use"
+            return "working"
         }
     }
     

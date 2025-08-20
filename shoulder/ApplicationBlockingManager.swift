@@ -164,8 +164,10 @@ class ApplicationBlockingManager: ObservableObject {
     
     private func showBlockingNotification(appName: String, reason: String?) {
         let content = UNMutableNotificationContent()
-        content.title = "Application Blocked"
-        content.body = reason ?? "\(appName) was closed to help you maintain focus."
+        content.title = "🚫 Blocked"
+        // Keep blocking messages brief
+        let briefReason = reason != nil ? String(reason!.prefix(30)) : "Stay focused"
+        content.body = "\(appName): \(briefReason)"
         content.sound = .default
         
         let request = UNNotificationRequest(
@@ -179,8 +181,10 @@ class ApplicationBlockingManager: ObservableObject {
     
     private func showUnfocusedNotification(appName: String, analysis: MLXAnalysisResult) {
         let content = UNMutableNotificationContent()
-        content.title = "⚠️ Off-Task Activity Detected"
-        content.body = "You're using \(appName). \(analysis.explanation)"
+        content.title = "⚠️ Off-Task"
+        // Truncate explanation to 30 chars max for brevity
+        let briefExplanation = String(analysis.explanation.prefix(30))
+        content.body = "\(appName): \(briefExplanation)"
         content.sound = .default
         
         let request = UNNotificationRequest(
