@@ -30,6 +30,24 @@ struct SpatialText {
     }
 }
 
+// MARK: - Configuration Management
+
+struct ScreenshotConfiguration {
+    let captureInterval: TimeInterval
+    let contentChangeThreshold: Double
+    let minAnalysisInterval: TimeInterval
+    let maxScreenshotsWithoutAnalysis: Int
+    let maxPendingAnalyses: Int
+    
+    static let `default` = ScreenshotConfiguration(
+        captureInterval: 10.0,
+        contentChangeThreshold: 0.5,
+        minAnalysisInterval: 30.0,
+        maxScreenshotsWithoutAnalysis: 30,
+        maxPendingAnalyses: 50
+    )
+}
+
 // MARK: - Screenshot Quality Configuration
 
 enum ScreenshotQuality {
@@ -58,11 +76,38 @@ enum ImageFormat {
     }
 }
 
+// MARK: - Thread-Safe Analysis State
+
+actor AnalysisState {
+    var previousOCRText: String = ""
+    var previousAppName: String = ""
+    var screenshotsSinceLastAnalysis: Int = 0
+    var lastAnalysisTime: Date?
+    
+    func updateContent(ocrText: String, appName: String) {
+        previousOCRText = ocrText
+        previousAppName = appName
+        screenshotsSinceLastAnalysis += 1
+    }
+    
+    func resetAnalysisCounter() {
+        screenshotsSinceLastAnalysis = 0
+        lastAnalysisTime = Date()
+    }
+    
+    func getCurrentState() -> (ocrText: String, appName: String, screenshots: Int, lastTime: Date?) {
+        return (previousOCRText, previousAppName, screenshotsSinceLastAnalysis, lastAnalysisTime)
+    }
+}
+
 // MARK: - ScreenshotManager
 
 class ScreenshotManager: ObservableObject {
+    // Configuration
+    private let config: ScreenshotConfiguration
+    
+    // Core properties
     private var timer: Timer?
-    private let captureInterval: TimeInterval = 10.0 // 10 seconds for responsive UX
     private var baseDirectoryURL: URL?
     private var mlxLLMManager: MLXLLMManager?
     @Published var lastOCRText: String?
@@ -71,18 +116,13 @@ class ScreenshotManager: ObservableObject {
     private var contentFilter: SCContentFilter?
     private var streamConfiguration: SCStreamConfiguration?
     private var cancellables = Set<AnyCancellable>()
+    private var isConfigured = false
     
     // Quality control
     private var screenshotQuality: ScreenshotQuality = .medium
     
-    // Content change detection properties
-    private var previousOCRText: String = ""
-    private var previousAppName: String = ""
-    private var contentChangeThreshold: Double = 0.5 // 50% change threshold
-    private var lastAnalysisTime: Date?
-    private var minAnalysisInterval: TimeInterval = 30.0 // Minimum 30s between analyses
-    private var screenshotsSinceLastAnalysis: Int = 0
-    private var maxScreenshotsWithoutAnalysis: Int = 30 // Force analysis after 5 minutes (30 * 10s)
+    // Thread-safe state management
+    private let analysisState = AnalysisState()
     
     // Queue for pending analyses when LLM server isn't ready
     private struct PendingAnalysis {
@@ -91,8 +131,10 @@ class ScreenshotManager: ObservableObject {
         let timestamp: Date
     }
     private var pendingAnalyses: [PendingAnalysis] = []
+    private let pendingAnalysesLock = NSLock()
     
-    init() {
+    init(configuration: ScreenshotConfiguration = .default) {
+        self.config = configuration
         setupDirectories()
         Task {
             await setupScreenCaptureKit()
@@ -157,13 +199,14 @@ class ScreenshotManager: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: baseDirectoryURL!, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            print("Failed to create screenshots directory: \(error)")
+            print("Failed to create screenshots directory: \(error.localizedDescription)")
         }
     }
     
     private func setupScreenCaptureKit() async {
         guard await SCScreenshotManager.isAvailable else {
             print("ScreenCaptureKit not available, falling back to legacy capture")
+            isConfigured = true
             return
         }
         
@@ -174,6 +217,7 @@ class ScreenshotManager: ObservableObject {
             // Create filter for main display
             guard let mainDisplay = availableContent.displays.first else {
                 print("No displays available for capture")
+                isConfigured = true
                 return
             }
             
@@ -188,14 +232,30 @@ class ScreenshotManager: ObservableObject {
             streamConfiguration?.scalesToFit = false
             
             // Configure quality based on setting
-            let qualitySettings = screenshotQuality.settings
-            streamConfiguration?.width = Int(CGFloat(mainDisplay.width) * qualitySettings.scale)
-            streamConfiguration?.height = Int(CGFloat(mainDisplay.height) * qualitySettings.scale)
+            updateConfigurationQuality()
             
             print("ScreenCaptureKit configured: \(streamConfiguration?.width ?? 0)x\(streamConfiguration?.height ?? 0)")
             
         } catch {
-            print("Failed to setup ScreenCaptureKit: \(error)")
+            print("Failed to setup ScreenCaptureKit: \(error.localizedDescription)")
+        }
+        
+        isConfigured = true
+    }
+    
+    private func updateConfigurationQuality() {
+        guard let config = streamConfiguration,
+              let filter = contentFilter,
+              let display = filter.display else { return }
+        
+        let qualitySettings = screenshotQuality.settings
+        config.width = Int(CGFloat(display.width) * qualitySettings.scale)
+        config.height = Int(CGFloat(display.height) * qualitySettings.scale)
+    }
+    
+    private func waitForConfiguration() async {
+        while !isConfigured {
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
         }
     }
     
@@ -205,8 +265,9 @@ class ScreenshotManager: ObservableObject {
         screenshotQuality = quality
         print("Screenshot quality changed to: \(quality)")
         
-        Task {
-            await setupScreenCaptureKit() // Reconfigure with new quality
+        // Only update configuration if already set up
+        if isConfigured {
+            updateConfigurationQuality()
         }
     }
     
@@ -217,7 +278,7 @@ class ScreenshotManager: ObservableObject {
         captureScreenshot()
         
         // Set up timer for regular captures
-        timer = Timer.scheduledTimer(withTimeInterval: captureInterval, repeats: true) { _ in
+        timer = Timer.scheduledTimer(withTimeInterval: config.captureInterval, repeats: true) { _ in
             self.captureScreenshot()
         }
         
@@ -229,6 +290,13 @@ class ScreenshotManager: ObservableObject {
     }
     
     private func captureScreenshot() {
+        Task {
+            await waitForConfiguration()
+            await performScreenshotCapture()
+        }
+    }
+    
+    private func performScreenshotCapture() async {
         guard let baseURL = baseDirectoryURL else {
             print("Base directory URL not available")
             return
@@ -245,7 +313,7 @@ class ScreenshotManager: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: todayFolderURL, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            print("Failed to create today's directory: \(error)")
+            print("Failed to create today's directory: \(error.localizedDescription)")
             return
         }
         
@@ -261,13 +329,11 @@ class ScreenshotManager: ObservableObject {
         if let contentFilter = contentFilter,
            let streamConfiguration = streamConfiguration {
             
-            Task {
-                await captureWithScreenCaptureKit(contentFilter: contentFilter, 
-                                                configuration: streamConfiguration, 
-                                                fileURL: fileURL, 
-                                                todayFolderURL: todayFolderURL, 
-                                                timeString: timeString)
-            }
+            await captureWithScreenCaptureKit(contentFilter: contentFilter, 
+                                            configuration: streamConfiguration, 
+                                            fileURL: fileURL, 
+                                            todayFolderURL: todayFolderURL, 
+                                            timeString: timeString)
         } else {
             // Fallback to legacy CGDisplayCreateImage
             captureLegacyScreenshot(fileURL: fileURL, todayFolderURL: todayFolderURL, timeString: timeString)
@@ -299,7 +365,7 @@ class ScreenshotManager: ObservableObject {
             processOCR(for: cgImage, at: todayFolderURL, filename: timeString)
             
         } catch {
-            print("ScreenCaptureKit capture failed: \(error), falling back to legacy")
+            print("ScreenCaptureKit capture failed: \(error.localizedDescription), falling back to legacy")
             // Fallback to legacy method
             captureLegacyScreenshot(fileURL: fileURL, todayFolderURL: todayFolderURL, timeString: timeString)
         }
@@ -370,7 +436,7 @@ class ScreenshotManager: ObservableObject {
             do {
                 try pngData.write(to: url)
             } catch {
-                print("Failed to save PNG image: \(error)")
+                print("Failed to save PNG image: \(error.localizedDescription)")
             }
         }
     }
@@ -393,12 +459,14 @@ class ScreenshotManager: ObservableObject {
             do {
                 try handler.perform([request])
             } catch {
+                print("OCR processing failed: \(error.localizedDescription)")
             }
         }
     }
     
     private func handleOCRResult(request: VNRequest, error: Error?, folderURL: URL, filename: String) {
         guard error == nil else {
+            print("OCR request failed: \(error?.localizedDescription ?? "Unknown error")")
             return
         }
         
@@ -449,18 +517,20 @@ class ScreenshotManager: ObservableObject {
                 // Check if we should trigger analysis based on content changes
                 guard let strongSelf = self else { return }
                 
-                let shouldAnalyze = strongSelf.shouldTriggerAnalysis(currentOCRText: ocrText, currentAppName: currentAppName)
-                
-                if shouldAnalyze, let mlxManager = strongSelf.mlxLLMManager {
-                    strongSelf.triggerMLXAnalysis(ocrText: ocrText, with: mlxManager)
-                    strongSelf.lastAnalysisTime = Date()
-                    strongSelf.screenshotsSinceLastAnalysis = 0 // Reset counter after analysis
+                Task {
+                    let shouldAnalyze = await strongSelf.shouldTriggerAnalysis(currentOCRText: ocrText, currentAppName: currentAppName)
+                    
+                    if shouldAnalyze, let mlxManager = strongSelf.mlxLLMManager {
+                        strongSelf.triggerMLXAnalysis(ocrText: ocrText, with: mlxManager)
+                        await strongSelf.analysisState.resetAnalysisCounter()
+                    }
+                    
+                    // Always update content history regardless of whether we analyzed
+                    await strongSelf.updateContentHistory(ocrText: ocrText, appName: currentAppName)
                 }
-                
-                // Always update content history regardless of whether we analyzed
-                strongSelf.updateContentHistory(ocrText: ocrText, appName: currentAppName)
             }
         } catch {
+            print("Failed to save markdown file: \(error.localizedDescription)")
         }
     }
     
@@ -618,26 +688,28 @@ class ScreenshotManager: ObservableObject {
         return union.isEmpty ? 0.0 : Double(intersection.count) / Double(union.count)
     }
     
-    private func shouldTriggerAnalysis(currentOCRText: String, currentAppName: String) -> Bool {
+    private func shouldTriggerAnalysis(currentOCRText: String, currentAppName: String) async -> Bool {
+        let state = await analysisState.getCurrentState()
+        
         // Force analysis if app has changed (context switch detection)
-        if currentAppName != previousAppName && !previousAppName.isEmpty {
+        if currentAppName != state.appName && !state.appName.isEmpty {
             // Use high quality for app switches to capture important context
             setScreenshotQuality(.high)
             return true
         }
         
         // Force analysis if too many screenshots without analysis (time-based fallback)
-        if screenshotsSinceLastAnalysis >= maxScreenshotsWithoutAnalysis {
+        if state.screenshots >= config.maxScreenshotsWithoutAnalysis {
             return true
         }
         
         // Calculate similarity between current and previous OCR text
-        let similarity = calculateJaccardSimilarity(currentOCRText, previousOCRText)
+        let similarity = calculateJaccardSimilarity(currentOCRText, state.ocrText)
         let changeRatio = 1.0 - similarity
         
         // Check if enough time has passed since last analysis (prevents spam)
-        let enoughTimeHasPassed = lastAnalysisTime == nil || 
-            Date().timeIntervalSince(lastAnalysisTime!) >= minAnalysisInterval
+        let enoughTimeHasPassed = state.lastTime == nil || 
+            Date().timeIntervalSince(state.lastTime!) >= config.minAnalysisInterval
         
         // Adaptive quality based on content changes
         if changeRatio > 0.7 {
@@ -647,13 +719,11 @@ class ScreenshotManager: ObservableObject {
         }
         
         // Trigger analysis if significant content change AND enough time has passed
-        return changeRatio > contentChangeThreshold && enoughTimeHasPassed
+        return changeRatio > config.contentChangeThreshold && enoughTimeHasPassed
     }
     
-    private func updateContentHistory(ocrText: String, appName: String) {
-        previousOCRText = ocrText
-        previousAppName = appName
-        screenshotsSinceLastAnalysis += 1
+    private func updateContentHistory(ocrText: String, appName: String) async {
+        await analysisState.updateContent(ocrText: ocrText, appName: appName)
     }
     
     @MainActor
@@ -666,7 +736,7 @@ class ScreenshotManager: ObservableObject {
         // Check if model is ready
         if !mlxManager.isModelReady {
             print("Model not ready, queueing analysis")
-            pendingAnalyses.append(PendingAnalysis(
+            addPendingAnalysis(PendingAnalysis(
                 ocrText: ocrText,
                 appName: appName,
                 timestamp: Date()
@@ -690,7 +760,7 @@ class ScreenshotManager: ObservableObject {
                 case MLXLLMError.modelNotLoaded:
                     // Queue for retry when model is ready
                     print("Model not loaded, queueing for retry")
-                    pendingAnalyses.append(PendingAnalysis(
+                    addPendingAnalysis(PendingAnalysis(
                         ocrText: ocrText,
                         appName: appName,
                         timestamp: Date()
@@ -699,10 +769,24 @@ class ScreenshotManager: ObservableObject {
                     // Log but don't retry - LLM couldn't parse or generate valid JSON
                     print("LLM analysis failed - invalid response for \(appName)")
                 default:
-                    print("Analysis error for \(appName): \(error)")
+                    print("Analysis error for \(appName): \(error.localizedDescription)")
                 }
             }
         }
+    }
+    
+    // MARK: - Bounded Queue Management
+    
+    private func addPendingAnalysis(_ analysis: PendingAnalysis) {
+        pendingAnalysesLock.lock()
+        defer { pendingAnalysesLock.unlock() }
+        
+        // Implement bounded queue with FIFO eviction
+        if pendingAnalyses.count >= config.maxPendingAnalyses {
+            pendingAnalyses.removeFirst() // Remove oldest
+            print("Pending analyses queue full, removed oldest entry")
+        }
+        pendingAnalyses.append(analysis)
     }
     
     // MARK: - Public API for Quality Control
@@ -720,5 +804,9 @@ class ScreenshotManager: ObservableObject {
             format: settings.format.fileExtension,
             quality: settings.quality
         )
+    }
+    
+    func getConfiguration() -> ScreenshotConfiguration {
+        return config
     }
 }
