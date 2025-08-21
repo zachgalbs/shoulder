@@ -291,6 +291,7 @@ struct ModelSelectionView: View {
     @ObservedObject var mlxManager: MLXLLMManager
     @State private var isChangingModel = false
     @State private var showApiKeyField = false
+    @State private var isValidatingKey = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -331,28 +332,178 @@ struct ModelSelectionView: View {
             }
             
             if mlxManager.isRemoteModel {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("OpenAI API Key:")
-                            .foregroundColor(DesignSystem.Colors.textSecondary)
-                        Button(action: { showApiKeyField.toggle() }) {
-                            Image(systemName: showApiKeyField ? "eye.slash" : "eye")
-                                .font(.caption)
+                APIKeyInputView(
+                    apiKey: $mlxManager.openaiApiKey,
+                    isModelReady: mlxManager.isModelReady,
+                    isModelLoaded: mlxManager.isModelLoaded,
+                    modelLoadingMessage: mlxManager.modelLoadingMessage,
+                    isValidating: isValidatingKey,
+                    onKeyChanged: { newKey in
+                        if !newKey.isEmpty && newKey != mlxManager.openaiApiKey {
+                            Task {
+                                isValidatingKey = true
+                                await mlxManager.switchModel(to: mlxManager.selectedModel)
+                                isValidatingKey = false
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
-                    
-                    if showApiKeyField {
-                        SecureField("Enter your OpenAI API key", text: $mlxManager.openaiApiKey)
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        TextField("Enter your OpenAI API key", text: $mlxManager.openaiApiKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
+                )
             }
         }
         .padding(.vertical, 4)
     }
+}
+
+struct APIKeyInputView: View {
+    @Binding var apiKey: String
+    let isModelReady: Bool
+    let isModelLoaded: Bool
+    let modelLoadingMessage: String
+    let isValidating: Bool
+    let onKeyChanged: (String) -> Void
+    
+    @State private var showApiKey = false
+    @State private var isEditing = false
+    
+    private var keyValidationState: KeyValidationState {
+        if isValidating {
+            return .validating
+        } else if apiKey.isEmpty {
+            return .empty
+        } else if !isModelLoaded && modelLoadingMessage.contains("API key") {
+            return .invalid
+        } else if isModelReady {
+            return .valid
+        } else {
+            return .unknown
+        }
+    }
+    
+    private var truncatedDisplayKey: String {
+        guard !apiKey.isEmpty else { return "Enter your OpenAI API key" }
+        if apiKey.count <= 12 {
+            return String(repeating: "•", count: apiKey.count)
+        }
+        return "sk-..." + String(apiKey.suffix(4))
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.small) {
+            HStack {
+                Text("OpenAI API Key:")
+                    .foregroundColor(DesignSystem.Colors.textSecondary)
+                
+                Spacer()
+                
+                // Validation status indicator
+                HStack(spacing: 4) {
+                    switch keyValidationState {
+                    case .validating:
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("Validating...")
+                            .font(.caption2)
+                            .foregroundColor(DesignSystem.Colors.textSecondary)
+                    case .valid:
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(DesignSystem.Colors.activeGreen)
+                            .font(.caption)
+                        Text("Valid")
+                            .font(.caption2)
+                            .foregroundColor(DesignSystem.Colors.activeGreen)
+                    case .invalid:
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DesignSystem.Colors.errorRed)
+                            .font(.caption)
+                        Text("Invalid")
+                            .font(.caption2)
+                            .foregroundColor(DesignSystem.Colors.errorRed)
+                    case .empty, .unknown:
+                        EmptyView()
+                    }
+                }
+                
+                // Toggle visibility button
+                Button(action: { 
+                    withAnimation(DesignSystem.Animation.quick) {
+                        showApiKey.toggle()
+                    }
+                }) {
+                    Image(systemName: showApiKey ? "eye.slash.fill" : "eye.fill")
+                        .font(.caption)
+                        .foregroundColor(DesignSystem.Colors.accentBlue)
+                }
+                .buttonStyle(.plain)
+                .disabled(isValidating)
+            }
+            
+            // Fixed-height input field
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
+                    .fill(Color(NSColor.textBackgroundColor))
+                    .stroke(strokeColor, lineWidth: 1)
+                    .frame(height: 28)
+                
+                HStack {
+                    if showApiKey || isEditing {
+                        TextField("sk-...", text: Binding(
+                            get: { apiKey },
+                            set: { newValue in
+                                apiKey = newValue
+                                onKeyChanged(newValue)
+                            }
+                        ))
+                        .textFieldStyle(.plain)
+                        .font(.system(.body, design: .monospaced))
+                        .onEditingChanged { editing in
+                            isEditing = editing
+                        }
+                    } else {
+                        Text(truncatedDisplayKey)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(apiKey.isEmpty ? DesignSystem.Colors.textTertiary : DesignSystem.Colors.textPrimary)
+                            .onTapGesture {
+                                withAnimation(DesignSystem.Animation.quick) {
+                                    showApiKey = true
+                                }
+                            }
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, DesignSystem.Spacing.small)
+            }
+            
+            // Error message
+            if case .invalid = keyValidationState {
+                Text(modelLoadingMessage)
+                    .font(.caption2)
+                    .foregroundColor(DesignSystem.Colors.errorRed)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(DesignSystem.Animation.standard, value: keyValidationState)
+    }
+    
+    private var strokeColor: Color {
+        switch keyValidationState {
+        case .valid:
+            return DesignSystem.Colors.activeGreen.opacity(0.5)
+        case .invalid:
+            return DesignSystem.Colors.errorRed.opacity(0.5)
+        case .validating:
+            return DesignSystem.Colors.accentBlue.opacity(0.5)
+        default:
+            return Color.gray.opacity(0.3)
+        }
+    }
+}
+
+private enum KeyValidationState {
+    case empty
+    case validating
+    case valid
+    case invalid
+    case unknown
 }
 
