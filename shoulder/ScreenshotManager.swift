@@ -9,6 +9,8 @@ import Foundation
 import AppKit
 import ScreenCaptureKit
 import Vision
+import Combine
+import UniformTypeIdentifiers
 
 // MARK: - SpatialText Model
 
@@ -28,6 +30,34 @@ struct SpatialText {
     }
 }
 
+// MARK: - Screenshot Quality Configuration
+
+enum ScreenshotQuality {
+    case high    // 100% resolution, 95% JPEG quality
+    case medium  // 70% resolution, 85% JPEG quality  
+    case low     // 50% resolution, 75% JPEG quality
+    
+    var settings: (scale: CGFloat, quality: CGFloat, format: ImageFormat) {
+        switch self {
+        case .high: return (1.0, 0.95, .jpeg)
+        case .medium: return (0.7, 0.85, .jpeg)
+        case .low: return (0.5, 0.75, .jpeg)
+        }
+    }
+}
+
+enum ImageFormat {
+    case png
+    case jpeg
+    
+    var fileExtension: String {
+        switch self {
+        case .png: return "png"
+        case .jpeg: return "jpg"
+        }
+    }
+}
+
 // MARK: - ScreenshotManager
 
 class ScreenshotManager: ObservableObject {
@@ -36,6 +66,14 @@ class ScreenshotManager: ObservableObject {
     private var baseDirectoryURL: URL?
     private var mlxLLMManager: MLXLLMManager?
     @Published var lastOCRText: String?
+    
+    // ScreenCaptureKit properties
+    private var contentFilter: SCContentFilter?
+    private var streamConfiguration: SCStreamConfiguration?
+    private var cancellables = Set<AnyCancellable>()
+    
+    // Quality control
+    private var screenshotQuality: ScreenshotQuality = .medium
     
     // Content change detection properties
     private var previousOCRText: String = ""
@@ -56,6 +94,9 @@ class ScreenshotManager: ObservableObject {
     
     init() {
         setupDirectories()
+        Task {
+            await setupScreenCaptureKit()
+        }
     }
     
     func setMLXLLMManager(_ manager: MLXLLMManager) {
@@ -116,6 +157,56 @@ class ScreenshotManager: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: baseDirectoryURL!, withIntermediateDirectories: true, attributes: nil)
         } catch {
+            print("Failed to create screenshots directory: \(error)")
+        }
+    }
+    
+    private func setupScreenCaptureKit() async {
+        guard await SCScreenshotManager.isAvailable else {
+            print("ScreenCaptureKit not available, falling back to legacy capture")
+            return
+        }
+        
+        do {
+            // Get available content (displays and windows)
+            let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            
+            // Create filter for main display
+            guard let mainDisplay = availableContent.displays.first else {
+                print("No displays available for capture")
+                return
+            }
+            
+            contentFilter = SCContentFilter(display: mainDisplay, excludingApplications: [], exceptingWindows: [])
+            
+            // Configure stream settings for optimal performance
+            streamConfiguration = SCStreamConfiguration()
+            streamConfiguration?.width = Int(mainDisplay.width)
+            streamConfiguration?.height = Int(mainDisplay.height)
+            streamConfiguration?.capturesAudio = false
+            streamConfiguration?.showsCursor = false
+            streamConfiguration?.scalesToFit = false
+            
+            // Configure quality based on setting
+            let qualitySettings = screenshotQuality.settings
+            streamConfiguration?.width = Int(CGFloat(mainDisplay.width) * qualitySettings.scale)
+            streamConfiguration?.height = Int(CGFloat(mainDisplay.height) * qualitySettings.scale)
+            
+            print("ScreenCaptureKit configured: \(streamConfiguration?.width ?? 0)x\(streamConfiguration?.height ?? 0)")
+            
+        } catch {
+            print("Failed to setup ScreenCaptureKit: \(error)")
+        }
+    }
+    
+    func setScreenshotQuality(_ quality: ScreenshotQuality) {
+        guard quality != screenshotQuality else { return }
+        
+        screenshotQuality = quality
+        print("Screenshot quality changed to: \(quality)")
+        
+        Task {
+            await setupScreenCaptureKit() // Reconfigure with new quality
         }
     }
     
@@ -139,6 +230,7 @@ class ScreenshotManager: ObservableObject {
     
     private func captureScreenshot() {
         guard let baseURL = baseDirectoryURL else {
+            print("Base directory URL not available")
             return
         }
         
@@ -153,37 +245,133 @@ class ScreenshotManager: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: todayFolderURL, withIntermediateDirectories: true, attributes: nil)
         } catch {
+            print("Failed to create today's directory: \(error)")
             return
         }
         
-        // Generate timestamp filename
+        // Generate timestamp filename with appropriate extension
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH-mm-ss"
         let timeString = timeFormatter.string(from: Date())
-        let filename = "screenshot-\(timeString).png"
+        let qualitySettings = screenshotQuality.settings
+        let filename = "screenshot-\(timeString).\(qualitySettings.format.fileExtension)"
         let fileURL = todayFolderURL.appendingPathComponent(filename)
         
-        
-        // Capture screenshot using CGDisplayCreateImage
+        // Try ScreenCaptureKit first, fallback to legacy method
+        if let contentFilter = contentFilter,
+           let streamConfiguration = streamConfiguration {
+            
+            Task {
+                await captureWithScreenCaptureKit(contentFilter: contentFilter, 
+                                                configuration: streamConfiguration, 
+                                                fileURL: fileURL, 
+                                                todayFolderURL: todayFolderURL, 
+                                                timeString: timeString)
+            }
+        } else {
+            // Fallback to legacy CGDisplayCreateImage
+            captureLegacyScreenshot(fileURL: fileURL, todayFolderURL: todayFolderURL, timeString: timeString)
+        }
+    }
+    
+    private func captureWithScreenCaptureKit(contentFilter: SCContentFilter, 
+                                           configuration: SCStreamConfiguration, 
+                                           fileURL: URL, 
+                                           todayFolderURL: URL, 
+                                           timeString: String) async {
+        do {
+            // Capture single frame
+            let cgImage = try await SCScreenshotManager.captureImage(
+                contentFilter: contentFilter,
+                configuration: configuration
+            )
+            
+            // Save with quality settings
+            let qualitySettings = screenshotQuality.settings
+            
+            if qualitySettings.format == .jpeg {
+                saveImageAsJPEG(cgImage, to: fileURL, quality: qualitySettings.quality)
+            } else {
+                saveImageAsPNG(cgImage, to: fileURL)
+            }
+            
+            // Process OCR asynchronously
+            processOCR(for: cgImage, at: todayFolderURL, filename: timeString)
+            
+        } catch {
+            print("ScreenCaptureKit capture failed: \(error), falling back to legacy")
+            // Fallback to legacy method
+            captureLegacyScreenshot(fileURL: fileURL, todayFolderURL: todayFolderURL, timeString: timeString)
+        }
+    }
+    
+    private func captureLegacyScreenshot(fileURL: URL, todayFolderURL: URL, timeString: String) {
+        // Legacy capture using CGDisplayCreateImage
         if let displayID = CGMainDisplayID() as CGDirectDisplayID?,
            let image = CGDisplayCreateImage(displayID) {
             
+            let qualitySettings = screenshotQuality.settings
+            let scaledImage = createScaledImage(from: image, scale: qualitySettings.scale) ?? image
             
-            // Convert to NSImage and save as PNG
-            let nsImage = NSImage(cgImage: image, size: .zero)
-            if let tiffData = nsImage.tiffRepresentation,
-               let bitmapImage = NSBitmapImageRep(data: tiffData),
-               let pngData = bitmapImage.representation(using: .png, properties: [:]) {
-                
-                do {
-                    try pngData.write(to: fileURL)
-                    
-                    // Process OCR asynchronously
-                    processOCR(for: image, at: todayFolderURL, filename: timeString)
-                } catch {
-                }
+            if qualitySettings.format == .jpeg {
+                saveImageAsJPEG(scaledImage, to: fileURL, quality: qualitySettings.quality)
+            } else {
+                saveImageAsPNG(scaledImage, to: fileURL)
             }
+            
+            // Process OCR asynchronously
+            processOCR(for: scaledImage, at: todayFolderURL, filename: timeString)
         } else {
+            print("Failed to capture screenshot using legacy method")
+        }
+    }
+    
+    private func createScaledImage(from cgImage: CGImage, scale: CGFloat) -> CGImage? {
+        guard scale < 1.0 else { return cgImage }
+        
+        let newWidth = Int(CGFloat(cgImage.width) * scale)
+        let newHeight = Int(CGFloat(cgImage.height) * scale)
+        
+        guard let context = CGContext(
+            data: nil, width: newWidth, height: newHeight,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else { return nil }
+        
+        context.interpolationQuality = .high  // Maintains text readability
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+        return context.makeImage()
+    }
+    
+    private func saveImageAsJPEG(_ cgImage: CGImage, to url: URL, quality: CGFloat) {
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, kUTTypeJPEG, 1, nil) else {
+            print("Failed to create JPEG destination")
+            return
+        }
+        
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: quality
+        ]
+        
+        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+        
+        if !CGImageDestinationFinalize(destination) {
+            print("Failed to save JPEG image")
+        }
+    }
+    
+    private func saveImageAsPNG(_ cgImage: CGImage, to url: URL) {
+        let nsImage = NSImage(cgImage: cgImage, size: .zero)
+        if let tiffData = nsImage.tiffRepresentation,
+           let bitmapImage = NSBitmapImageRep(data: tiffData),
+           let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+            
+            do {
+                try pngData.write(to: url)
+            } catch {
+                print("Failed to save PNG image: \(error)")
+            }
         }
     }
     
@@ -433,6 +621,8 @@ class ScreenshotManager: ObservableObject {
     private func shouldTriggerAnalysis(currentOCRText: String, currentAppName: String) -> Bool {
         // Force analysis if app has changed (context switch detection)
         if currentAppName != previousAppName && !previousAppName.isEmpty {
+            // Use high quality for app switches to capture important context
+            setScreenshotQuality(.high)
             return true
         }
         
@@ -449,6 +639,13 @@ class ScreenshotManager: ObservableObject {
         let enoughTimeHasPassed = lastAnalysisTime == nil || 
             Date().timeIntervalSince(lastAnalysisTime!) >= minAnalysisInterval
         
+        // Adaptive quality based on content changes
+        if changeRatio > 0.7 {
+            setScreenshotQuality(.medium) // Significant changes warrant medium quality
+        } else if changeRatio < 0.2 {
+            setScreenshotQuality(.low)    // Static content can use low quality
+        }
+        
         // Trigger analysis if significant content change AND enough time has passed
         return changeRatio > contentChangeThreshold && enoughTimeHasPassed
     }
@@ -464,9 +661,11 @@ class ScreenshotManager: ObservableObject {
         // Get current app context (simplified for demo)
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
         
+        print("Triggering LLM analysis for app: \(appName)")
         
         // Check if model is ready
         if !mlxManager.isModelReady {
+            print("Model not ready, queueing analysis")
             pendingAnalyses.append(PendingAnalysis(
                 ocrText: ocrText,
                 appName: appName,
@@ -483,12 +682,14 @@ class ScreenshotManager: ObservableObject {
                     windowTitle: nil
                 )
                 
+                print("Analysis completed for \(appName)")
                 
             } catch {
                 // Handle different error types appropriately
                 switch error {
                 case MLXLLMError.modelNotLoaded:
                     // Queue for retry when model is ready
+                    print("Model not loaded, queueing for retry")
                     pendingAnalyses.append(PendingAnalysis(
                         ocrText: ocrText,
                         appName: appName,
@@ -502,5 +703,22 @@ class ScreenshotManager: ObservableObject {
                 }
             }
         }
+    }
+    
+    // MARK: - Public API for Quality Control
+    
+    func getCurrentQuality() -> ScreenshotQuality {
+        return screenshotQuality
+    }
+    
+    func getQualityStats() -> (width: Int, height: Int, format: String, quality: CGFloat)? {
+        guard let config = streamConfiguration else { return nil }
+        let settings = screenshotQuality.settings
+        return (
+            width: config.width,
+            height: config.height,
+            format: settings.format.fileExtension,
+            quality: settings.quality
+        )
     }
 }
