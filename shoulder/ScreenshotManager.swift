@@ -32,10 +32,19 @@ struct SpatialText {
 
 class ScreenshotManager: ObservableObject {
     private var timer: Timer?
-    private let captureInterval: TimeInterval = 60.0 // 1 minute
+    private let captureInterval: TimeInterval = 10.0 // 10 seconds for responsive UX
     private var baseDirectoryURL: URL?
     private var mlxLLMManager: MLXLLMManager?
     @Published var lastOCRText: String?
+    
+    // Content change detection properties
+    private var previousOCRText: String = ""
+    private var previousAppName: String = ""
+    private var contentChangeThreshold: Double = 0.5 // 50% change threshold
+    private var lastAnalysisTime: Date?
+    private var minAnalysisInterval: TimeInterval = 30.0 // Minimum 30s between analyses
+    private var screenshotsSinceLastAnalysis: Int = 0
+    private var maxScreenshotsWithoutAnalysis: Int = 30 // Force analysis after 5 minutes (30 * 10s)
     
     // Queue for pending analyses when LLM server isn't ready
     private struct PendingAnalysis {
@@ -243,15 +252,25 @@ class ScreenshotManager: ObservableObject {
         do {
             try markdownContent.write(to: markdownURL, atomically: true, encoding: .utf8)
             
-            // Store the OCR text for potential LLM analysis
+            // Store the OCR text and conditionally trigger LLM analysis
             DispatchQueue.main.async { [weak self] in
                 let ocrText = spatialTexts.map { $0.text }.joined(separator: " ")
+                let currentAppName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
                 self?.lastOCRText = ocrText
                 
-                // Trigger MLX analysis if manager is available
-                if let mlxManager = self?.mlxLLMManager {
-                    self?.triggerMLXAnalysis(ocrText: ocrText, with: mlxManager)
+                // Check if we should trigger analysis based on content changes
+                guard let strongSelf = self else { return }
+                
+                let shouldAnalyze = strongSelf.shouldTriggerAnalysis(currentOCRText: ocrText, currentAppName: currentAppName)
+                
+                if shouldAnalyze, let mlxManager = strongSelf.mlxLLMManager {
+                    strongSelf.triggerMLXAnalysis(ocrText: ocrText, with: mlxManager)
+                    strongSelf.lastAnalysisTime = Date()
+                    strongSelf.screenshotsSinceLastAnalysis = 0 // Reset counter after analysis
                 }
+                
+                // Always update content history regardless of whether we analyzed
+                strongSelf.updateContentHistory(ocrText: ocrText, appName: currentAppName)
             }
         } catch {
         }
@@ -397,6 +416,47 @@ class ScreenshotManager: ObservableObject {
         }
         
         return result
+    }
+    
+    // MARK: - Content Change Detection
+    
+    private func calculateJaccardSimilarity(_ text1: String, _ text2: String) -> Double {
+        let words1 = Set(text1.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty })
+        let words2 = Set(text2.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty })
+        
+        let intersection = words1.intersection(words2)
+        let union = words1.union(words2)
+        
+        return union.isEmpty ? 0.0 : Double(intersection.count) / Double(union.count)
+    }
+    
+    private func shouldTriggerAnalysis(currentOCRText: String, currentAppName: String) -> Bool {
+        // Force analysis if app has changed (context switch detection)
+        if currentAppName != previousAppName && !previousAppName.isEmpty {
+            return true
+        }
+        
+        // Force analysis if too many screenshots without analysis (time-based fallback)
+        if screenshotsSinceLastAnalysis >= maxScreenshotsWithoutAnalysis {
+            return true
+        }
+        
+        // Calculate similarity between current and previous OCR text
+        let similarity = calculateJaccardSimilarity(currentOCRText, previousOCRText)
+        let changeRatio = 1.0 - similarity
+        
+        // Check if enough time has passed since last analysis (prevents spam)
+        let enoughTimeHasPassed = lastAnalysisTime == nil || 
+            Date().timeIntervalSince(lastAnalysisTime!) >= minAnalysisInterval
+        
+        // Trigger analysis if significant content change AND enough time has passed
+        return changeRatio > contentChangeThreshold && enoughTimeHasPassed
+    }
+    
+    private func updateContentHistory(ocrText: String, appName: String) {
+        previousOCRText = ocrText
+        previousAppName = appName
+        screenshotsSinceLastAnalysis += 1
     }
     
     @MainActor
