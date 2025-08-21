@@ -90,7 +90,8 @@ class ApplicationBlockingManager: ObservableObject {
         
         Task { @MainActor in
             // Send unfocused notification if enabled and activity is off-task
-            if unfocusedNotificationsEnabled && !analysis.is_valid && analysis.confidence >= 0.5 {
+            // ALWAYS send notification when is_valid is false, regardless of confidence
+            if unfocusedNotificationsEnabled && !analysis.is_valid {
                 showUnfocusedNotification(appName: appName, analysis: analysis)
             }
             
