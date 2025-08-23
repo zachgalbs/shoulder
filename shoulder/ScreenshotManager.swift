@@ -41,7 +41,7 @@ struct ScreenshotConfiguration {
     
     static let `default` = ScreenshotConfiguration(
         captureInterval: 10.0,
-        contentChangeThreshold: 0.5,
+        contentChangeThreshold: 0.5,  // 50% change required to trigger analysis
         minAnalysisInterval: 30.0,
         maxScreenshotsWithoutAnalysis: 30,
         maxPendingAnalyses: 50
@@ -51,7 +51,7 @@ struct ScreenshotConfiguration {
 // MARK: - Screenshot Quality Configuration
 
 enum ScreenshotQuality {
-    case high    // 100% resolution, 95% JPEG quality
+    case high    // 100% resolution, 95% JPEG quality (default for reliable OCR)
     case medium  // 70% resolution, 85% JPEG quality  
     case low     // 50% resolution, 75% JPEG quality
     
@@ -118,8 +118,8 @@ class ScreenshotManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var isConfigured = false
     
-    // Quality control
-    private var screenshotQuality: ScreenshotQuality = .medium
+    // Quality control - default to high for reliable OCR
+    private var screenshotQuality: ScreenshotQuality = .high
     
     // Thread-safe state management
     private let analysisState = AnalysisState()
@@ -204,8 +204,9 @@ class ScreenshotManager: ObservableObject {
     }
     
     private func setupScreenCaptureKit() async {
-        guard await SCScreenshotManager.isAvailable else {
-            print("ScreenCaptureKit not available, falling back to legacy capture")
+        // Check if ScreenCaptureKit is available (macOS 13+)
+        if #unavailable(macOS 13.0) {
+            print("ScreenCaptureKit requires macOS 13.0+, falling back to legacy capture")
             isConfigured = true
             return
         }
@@ -244,13 +245,15 @@ class ScreenshotManager: ObservableObject {
     }
     
     private func updateConfigurationQuality() {
-        guard let config = streamConfiguration,
-              let filter = contentFilter,
-              let display = filter.display else { return }
+        guard let config = streamConfiguration else { return }
+        
+        // Get display dimensions from current configuration
+        let baseWidth = config.width
+        let baseHeight = config.height
         
         let qualitySettings = screenshotQuality.settings
-        config.width = Int(CGFloat(display.width) * qualitySettings.scale)
-        config.height = Int(CGFloat(display.height) * qualitySettings.scale)
+        config.width = Int(CGFloat(baseWidth) * qualitySettings.scale)
+        config.height = Int(CGFloat(baseHeight) * qualitySettings.scale)
     }
     
     private func waitForConfiguration() async {
@@ -345,29 +348,29 @@ class ScreenshotManager: ObservableObject {
                                            fileURL: URL, 
                                            todayFolderURL: URL, 
                                            timeString: String) async {
-        do {
-            // Capture single frame
-            let cgImage = try await SCScreenshotManager.captureImage(
-                contentFilter: contentFilter,
-                configuration: configuration
-            )
-            
-            // Save with quality settings
-            let qualitySettings = screenshotQuality.settings
-            
-            if qualitySettings.format == .jpeg {
-                saveImageAsJPEG(cgImage, to: fileURL, quality: qualitySettings.quality)
-            } else {
-                saveImageAsPNG(cgImage, to: fileURL)
+        // Use continuation to convert callback to async
+        await withCheckedContinuation { continuation in
+            SCScreenshotManager.captureImage(contentFilter: contentFilter,
+                                            configuration: configuration) { cgImage, error in
+                if let error = error {
+                    print("ScreenCaptureKit capture failed: \(error.localizedDescription), falling back to legacy")
+                    // Fallback to legacy method
+                    self.captureLegacyScreenshot(fileURL: fileURL, todayFolderURL: todayFolderURL, timeString: timeString)
+                } else if let cgImage = cgImage {
+                    // Save with quality settings
+                    let qualitySettings = self.screenshotQuality.settings
+                    
+                    if qualitySettings.format == .jpeg {
+                        self.saveImageAsJPEG(cgImage, to: fileURL, quality: qualitySettings.quality)
+                    } else {
+                        self.saveImageAsPNG(cgImage, to: fileURL)
+                    }
+                    
+                    // Process OCR asynchronously
+                    self.processOCR(for: cgImage, at: todayFolderURL, filename: timeString)
+                }
+                continuation.resume()
             }
-            
-            // Process OCR asynchronously
-            processOCR(for: cgImage, at: todayFolderURL, filename: timeString)
-            
-        } catch {
-            print("ScreenCaptureKit capture failed: \(error.localizedDescription), falling back to legacy")
-            // Fallback to legacy method
-            captureLegacyScreenshot(fileURL: fileURL, todayFolderURL: todayFolderURL, timeString: timeString)
         }
     }
     
@@ -411,7 +414,7 @@ class ScreenshotManager: ObservableObject {
     }
     
     private func saveImageAsJPEG(_ cgImage: CGImage, to url: URL, quality: CGFloat) {
-        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, kUTTypeJPEG, 1, nil) else {
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
             print("Failed to create JPEG destination")
             return
         }
@@ -693,8 +696,6 @@ class ScreenshotManager: ObservableObject {
         
         // Force analysis if app has changed (context switch detection)
         if currentAppName != state.appName && !state.appName.isEmpty {
-            // Use high quality for app switches to capture important context
-            setScreenshotQuality(.high)
             return true
         }
         
@@ -710,13 +711,6 @@ class ScreenshotManager: ObservableObject {
         // Check if enough time has passed since last analysis (prevents spam)
         let enoughTimeHasPassed = state.lastTime == nil || 
             Date().timeIntervalSince(state.lastTime!) >= config.minAnalysisInterval
-        
-        // Adaptive quality based on content changes
-        if changeRatio > 0.7 {
-            setScreenshotQuality(.medium) // Significant changes warrant medium quality
-        } else if changeRatio < 0.2 {
-            setScreenshotQuality(.low)    // Static content can use low quality
-        }
         
         // Trigger analysis if significant content change AND enough time has passed
         return changeRatio > config.contentChangeThreshold && enoughTimeHasPassed
