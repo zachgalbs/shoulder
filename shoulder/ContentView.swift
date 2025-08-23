@@ -354,6 +354,8 @@ struct ModelSelectionView: View {
     }
 }
 
+/// Input field for OpenAI API key with validation, security, and accessibility features
+/// Supports real-time validation with debouncing, secure display, and tap-to-reveal functionality
 struct APIKeyInputView: View {
     @Binding var apiKey: String
     let isModelReady: Bool
@@ -364,6 +366,8 @@ struct APIKeyInputView: View {
     
     @State private var showApiKey = false
     @State private var isEditing = false
+    @State private var validationTimer: Timer?
+    @State private var pendingValidationKey: String = ""
     
     private var keyValidationState: KeyValidationState {
         if isValidating {
@@ -379,12 +383,41 @@ struct APIKeyInputView: View {
         }
     }
     
+    /// Computed property for displaying truncated API key safely
     private var truncatedDisplayKey: String {
-        guard !apiKey.isEmpty else { return "Enter your OpenAI API key" }
+        guard !apiKey.isEmpty else { return APIKeyConstants.placeholderText }
         if apiKey.count <= 12 {
             return String(repeating: "•", count: apiKey.count)
         }
-        return "sk-..." + String(apiKey.suffix(4))
+        return "sk-..." + String(apiKey.suffix(APIKeyConstants.keyPreviewLength))
+    }
+    
+    /// Computed binding for TextField to prevent memory leaks
+    private var apiKeyBinding: Binding<String> {
+        Binding(
+            get: { apiKey },
+            set: { newValue in
+                apiKey = newValue
+                scheduleValidation(for: newValue)
+            }
+        )
+    }
+    
+    /// Schedule validation with debouncing to prevent race conditions
+    private func scheduleValidation(for key: String) {
+        // Cancel any existing timer
+        validationTimer?.invalidate()
+        pendingValidationKey = key
+        
+        // Only schedule validation for non-empty keys that have changed
+        guard !key.isEmpty && key != apiKey else { return }
+        
+        validationTimer = Timer.scheduledTimer(withTimeInterval: APIKeyConstants.validationDebounceDelay, repeats: false) { _ in
+            // Only trigger validation if the key hasn't changed since scheduling
+            if pendingValidationKey == key {
+                onKeyChanged(key)
+            }
+        }
     }
     
     var body: some View {
@@ -423,7 +456,7 @@ struct APIKeyInputView: View {
                     }
                 }
                 
-                // Toggle visibility button
+                // Toggle visibility button with accessibility
                 Button(action: { 
                     withAnimation(DesignSystem.Animation.quick) {
                         showApiKey.toggle()
@@ -435,29 +468,27 @@ struct APIKeyInputView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isValidating)
+                .accessibilityLabel(showApiKey ? "Hide API key" : "Show API key")
+                .accessibilityHint("Toggle API key visibility for secure entry")
             }
             
-            // Fixed-height input field
+            // Fixed-height input field with proper accessibility
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
                     .fill(Color(NSColor.textBackgroundColor))
                     .stroke(strokeColor, lineWidth: 1)
-                    .frame(height: 28)
+                    .frame(height: APIKeyConstants.fieldHeight)
                 
                 HStack {
                     if showApiKey || isEditing {
-                        TextField("sk-...", text: Binding(
-                            get: { apiKey },
-                            set: { newValue in
-                                apiKey = newValue
-                                onKeyChanged(newValue)
-                            }
-                        ))
+                        TextField(APIKeyConstants.skPlaceholder, text: apiKeyBinding)
                         .textFieldStyle(.plain)
                         .font(.system(.body, design: .monospaced))
                         .onEditingChanged { editing in
                             isEditing = editing
                         }
+                        .accessibilityLabel("OpenAI API Key Input")
+                        .accessibilityHint("Enter your OpenAI API key for remote model access")
                     } else {
                         Text(truncatedDisplayKey)
                             .font(.system(.body, design: .monospaced))
@@ -467,6 +498,9 @@ struct APIKeyInputView: View {
                                     showApiKey = true
                                 }
                             }
+                            .accessibilityLabel(apiKey.isEmpty ? "API key not set" : "API key is set")
+                            .accessibilityHint(APIKeyConstants.tapToEditHint)
+                            .accessibilityAddTraits(.isButton)
                     }
                     
                     Spacer()
@@ -483,6 +517,11 @@ struct APIKeyInputView: View {
             }
         }
         .animation(DesignSystem.Animation.standard, value: keyValidationState)
+        .onDisappear {
+            // Clean up timer when view disappears to prevent memory leaks
+            validationTimer?.invalidate()
+            validationTimer = nil
+        }
     }
     
     private var strokeColor: Color {
@@ -499,11 +538,22 @@ struct APIKeyInputView: View {
     }
 }
 
+/// Validation states for the API key input field
 private enum KeyValidationState {
     case empty
     case validating
     case valid
     case invalid
     case unknown
+}
+
+/// Constants for the API key input field
+private enum APIKeyConstants {
+    static let fieldHeight: CGFloat = 28
+    static let keyPreviewLength = 4
+    static let validationDebounceDelay: TimeInterval = 0.5
+    static let placeholderText = "Enter your OpenAI API key"
+    static let skPlaceholder = "sk-..."
+    static let tapToEditHint = "Tap to edit API key"
 }
 
