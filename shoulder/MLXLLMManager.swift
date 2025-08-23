@@ -210,18 +210,8 @@ class MLXLLMManager: ObservableObject {
         lastAnalysis = analysis
         analysisHistory[appName] = analysis
         
-        // DEBUG: Log notification details before sending
-        print("📢 [DEBUG] Sending MLX Analysis Notification:")
-        print("  Notification Name: mlxAnalysisCompleted")
-        print("  App Name: \(appName)")
-        print("  Analysis Result:")
-        print("    is_valid: \(analysis.is_valid)")
-        print("    detected_activity: \(analysis.detected_activity)")
-        print("    explanation: \(analysis.explanation)")
-        print("    confidence: \(analysis.confidence)")
-        print("    analysis_source: \(analysis.analysis_source)")
-        print("  Notification will be used by blocking manager to determine if user should be notified of distraction")
-        print("───────────────────────────────────")
+        // Send notification
+        print("📢 Analysis complete: \(analysis.is_valid ? "Focused" : "Distracted") - \(analysis.detected_activity) (\(String(format: "%.0f%%", analysis.confidence * 100)))")
         
         // Send notification for blocking manager to handle
         NotificationCenter.default.post(
@@ -230,7 +220,6 @@ class MLXLLMManager: ObservableObject {
             userInfo: ["analysis": analysis, "appName": appName]
         )
         
-        print("✅ [DEBUG] Notification sent successfully")
         
         await saveAnalysisResult(analysis, appName: appName)
         
@@ -240,36 +229,38 @@ class MLXLLMManager: ObservableObject {
     private func performMLXAnalysis(container: ModelContainer, text: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
         // Create a prompt for the LLM to analyze the user's activity
         let prompt = """
-        You are an AI assistant analyzing user activity. The user's stated focus is: "\(userFocus)".
+        You are an AI assistant analyzing user activity to determine if they are focused on their stated goal.
         
-        Current application: \(appName)
-        Window title: \(windowTitle ?? "N/A")
-        Screen content (OCR text, first 500 chars): \(String(text.prefix(500)))
+        USER'S STATED FOCUS/GOAL: "\(userFocus)"
         
-        IMPORTANT RULE: If the user's focus is "Debugging" and there is ANY evidence of code, programming languages, development tools, or technical content in the screen content, consider the activity as aligned (is_valid: true) with high confidence.
+        CURRENT ACTIVITY:
+        - Application: \(appName)
+        - Window title: \(windowTitle ?? "N/A")
+        - Screen content (OCR text): \(text)
         
-        Based on this information, provide a JSON response with the following structure:
+        INSTRUCTIONS:
+        Determine if the current activity is DIRECTLY RELATED to the user's stated focus.
+        - Mark as is_valid=true ONLY if the activity clearly contributes to the stated focus
+        - Mark as is_valid=false for unrelated activities (entertainment, social media, unrelated browsing, etc.)
+        - Be strict: if in doubt, mark as invalid
+        
+        Example: If focus is "Developing my iOS application":
+        - Xcode, Swift documentation, iOS tutorials = VALID (true)
+        - Cat images, social media, news, YouTube videos = INVALID (false)
+        
+        Provide a JSON response with this EXACT structure (no duplicate fields):
         {
-            "is_valid": true/false (whether the activity aligns with the user's focus),
-            "detected_activity": "what user is doing (3-5 words max)",
-            "explanation": "2-7 word reason (e.g., 'browsing social media', 'reading documentation', 'watching videos')",
-            "confidence": 0.0-1.0 (confidence in the assessment)
+            "is_valid": true/false,
+            "detected_activity": "what user is doing (3-5 words)",
+            "explanation": "brief reason (2-7 words)",
+            "confidence": 0.0-1.0
         }
         
         Respond ONLY with valid JSON, no additional text.
         """
         
-        // DEBUG: Log the system prompt being sent to local MLX model
-        print("🧠 [DEBUG] MLX Local Model Prompt:")
-        print("───────────────────────────────────")
-        print("Model: \(selectedModel)")
-        print("User Focus: \(userFocus)")
-        print("App: \(appName)")
-        print("Window: \(windowTitle ?? "N/A")")
-        print("OCR Text (first 100 chars): \(String(text.prefix(100)))")
-        print("Full Prompt:")
-        print(prompt)
-        print("───────────────────────────────────")
+        // DEBUG: Log MLX analysis request
+        print("🧠 MLX Analysis: \(selectedModel) | Focus: \(userFocus) | App: \(appName) | OCR: \(text.count) chars")
         
         // Create a chat session for the analysis
         let session = ChatSession(container)
@@ -277,10 +268,9 @@ class MLXLLMManager: ObservableObject {
         // Generate response using the LLM
         let generatedText = try await session.respond(to: prompt)
         
-        // DEBUG: Log the raw response from local MLX model
-        print("📄 [DEBUG] Raw MLX Model Response:")
-        print(generatedText)
-        print("───────────────────────────────────")
+        // DEBUG: Log MLX response (first 100 chars)
+        let preview = String(generatedText.prefix(100))
+        print("  Response: \(preview)\(generatedText.count > 100 ? "..." : "")")
         
         // Parse the JSON response
         guard let jsonData = generatedText.data(using: String.Encoding.utf8),
@@ -289,21 +279,14 @@ class MLXLLMManager: ObservableObject {
               let detectedActivity = json["detected_activity"] as? String,
               let explanation = json["explanation"] as? String else {
             
-            print("❌ [DEBUG] Failed to parse MLX model JSON response")
+            print("  ❌ Failed to parse JSON response")
             // If JSON parsing fails, throw an error instead of using fallback
             throw MLXLLMError.invalidResponse
         }
         
-        // DEBUG: Log successful JSON parsing from MLX model
-        print("✅ [DEBUG] Successfully parsed MLX JSON response:")
-        print("  is_valid: \(isValid)")
-        print("  detected_activity: \(detectedActivity)")
-        print("  explanation: \(explanation)")
-        if let confidence = json["confidence"] as? Double {
-            print("  confidence: \(confidence)")
-        }
-        
+        // DEBUG: Log parsed result
         let confidence = (json["confidence"] as? Double) ?? 0.7
+        print("  ✅ Parsed: valid=\(isValid), activity=\(detectedActivity), confidence=\(String(format: "%.2f", confidence))")
         
         // Return the LLM's analysis without any overrides or modifications
         let result = MLXAnalysisResult(
@@ -315,14 +298,8 @@ class MLXLLMManager: ObservableObject {
             analysis_source: "llm"
         )
         
-        // DEBUG: Log the final local analysis result
-        print("🏁 [DEBUG] Final MLX Local Analysis Result:")
-        print("  is_valid: \(result.is_valid)")
-        print("  detected_activity: \(result.detected_activity)")
-        print("  explanation: \(result.explanation)")
-        print("  confidence: \(result.confidence)")
-        print("  analysis_source: \(result.analysis_source)")
-        print("───────────────────────────────────")
+        // DEBUG: Final result
+        print("  Final: \(result.is_valid ? "✓ Focused" : "✗ Distracted") - \(result.detected_activity)")
         
         return result
     }
@@ -333,36 +310,38 @@ class MLXLLMManager: ObservableObject {
         }
         
         let prompt = """
-        You are an AI assistant analyzing user activity. The user's stated focus is: "\(userFocus)".
+        You are an AI assistant analyzing user activity to determine if they are focused on their stated goal.
         
-        Current application: \(appName)
-        Window title: \(windowTitle ?? "N/A")
-        Screen content (OCR text, first 500 chars): \(String(text.prefix(500)))
+        USER'S STATED FOCUS/GOAL: "\(userFocus)"
         
-        IMPORTANT RULE: If the user's focus is "Debugging" and there is ANY evidence of code, programming languages, development tools, or technical content in the screen content, consider the activity as aligned (is_valid: true) with high confidence.
+        CURRENT ACTIVITY:
+        - Application: \(appName)
+        - Window title: \(windowTitle ?? "N/A")
+        - Screen content (OCR text): \(text)
         
-        Based on this information, provide a JSON response with the following structure:
+        INSTRUCTIONS:
+        Determine if the current activity is DIRECTLY RELATED to the user's stated focus.
+        - Mark as is_valid=true ONLY if the activity clearly contributes to the stated focus
+        - Mark as is_valid=false for unrelated activities (entertainment, social media, unrelated browsing, etc.)
+        - Be strict: if in doubt, mark as invalid
+        
+        Example: If focus is "Developing my iOS application":
+        - Xcode, Swift documentation, iOS tutorials = VALID (true)
+        - Cat images, social media, news, YouTube videos = INVALID (false)
+        
+        Provide a JSON response with this EXACT structure (no duplicate fields):
         {
-            "is_valid": true/false (whether the activity aligns with the user's focus),
-            "detected_activity": "what user is doing (3-5 words max)",
-            "explanation": "2-7 word reason (e.g., 'browsing social media', 'reading documentation', 'watching videos')",
-            "confidence": 0.0-1.0 (confidence in the assessment)
+            "is_valid": true/false,
+            "detected_activity": "what user is doing (3-5 words)",
+            "explanation": "brief reason (2-7 words)",
+            "confidence": 0.0-1.0
         }
         
         Respond ONLY with valid JSON, no additional text.
         """
         
-        // DEBUG: Log the system prompt being sent to OpenAI
-        print("🤖 [DEBUG] OpenAI System Prompt:")
-        print("───────────────────────────────────")
-        print("Model: \(selectedModel)")
-        print("User Focus: \(userFocus)")
-        print("App: \(appName)")
-        print("Window: \(windowTitle ?? "N/A")")
-        print("OCR Text (first 100 chars): \(String(text.prefix(100)))")
-        print("Full Prompt:")
-        print(prompt)
-        print("───────────────────────────────────")
+        // DEBUG: Log OpenAI request
+        print("🤖 OpenAI Request: \(selectedModel) | Focus: \(userFocus) | App: \(appName) | OCR: \(text.count) chars")
         
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
         request.httpMethod = "POST"
@@ -382,8 +361,8 @@ class MLXLLMManager: ObservableObject {
         if selectedModel.hasPrefix("gpt-5") {
             // GPT-5 specific parameters
             // Note: GPT-5 only supports default temperature (1), so we don't set it
-            requestBody["max_completion_tokens"] = 200  // GPT-5 uses max_completion_tokens instead of max_tokens
-            requestBody["reasoning_effort"] = "medium"  // Controls reasoning depth
+            requestBody["max_completion_tokens"] = 8000  // Increased to account for reasoning tokens
+            requestBody["reasoning_effort"] = "minimal"  // Controls reasoning depth
             requestBody["verbosity"] = "low"            // Keeps responses concise for JSON parsing
             
             // Use structured outputs for guaranteed JSON format
@@ -412,15 +391,14 @@ class MLXLLMManager: ObservableObject {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             
-            // DEBUG: Log the request body being sent to OpenAI
-            print("📤 [DEBUG] OpenAI Request Body:")
-            if let prettyData = try? JSONSerialization.data(withJSONObject: requestBody, options: .prettyPrinted),
-               let prettyString = String(data: prettyData, encoding: .utf8) {
-                print(prettyString)
+            // DEBUG: Log key request parameters
+            if selectedModel.hasPrefix("gpt-5") {
+                print("  Params: reasoning=minimal, verbosity=low, max_tokens=8000")
+            } else {
+                print("  Params: temperature=0.3, max_tokens=150")
             }
-            print("───────────────────────────────────")
         } catch {
-            print("❌ [DEBUG] Failed to serialize request body: \(error)")
+            print("  ❌ Failed to serialize request: \(error.localizedDescription)")
             throw MLXLLMError.networkError
         }
         
@@ -428,31 +406,29 @@ class MLXLLMManager: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ [DEBUG] Invalid HTTP response from OpenAI")
+                print("  ❌ Invalid HTTP response")
                 throw MLXLLMError.networkError
             }
             
-            // DEBUG: Log response status and headers
-            print("📥 [DEBUG] OpenAI Response:")
-            print("Status Code: \(httpResponse.statusCode)")
-            print("Headers: \(httpResponse.allHeaderFields)")
+            // DEBUG: Log response status
+            print("  Response: HTTP \(httpResponse.statusCode)")
             
             // Handle different HTTP status codes more specifically
             switch httpResponse.statusCode {
             case 200:
-                print("✅ [DEBUG] OpenAI request successful")
+                // Success - logged later with result
                 break // Success
             case 401:
-                print("❌ [DEBUG] OpenAI API key invalid or unauthorized")
+                print("  ❌ API key invalid or unauthorized")
                 throw MLXLLMError.apiKeyRequired
             case 429:
-                print("⚠️ [DEBUG] OpenAI rate limit exceeded")
+                print("  ⚠️ Rate limit exceeded")
                 throw MLXLLMError.networkError  // Rate limit
             case 500...599:
-                print("❌ [DEBUG] OpenAI server error (5xx)")
+                print("  ❌ Server error")
                 throw MLXLLMError.networkError  // Server error
             default:
-                print("❌ [DEBUG] OpenAI unexpected status code: \(httpResponse.statusCode)")
+                print("  ❌ Unexpected status: \(httpResponse.statusCode)")
                 // Try to parse error response for more details
                 if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let error = errorJson["error"] as? [String: Any],
@@ -462,72 +438,38 @@ class MLXLLMManager: ObservableObject {
                 throw MLXLLMError.networkError
             }
             
-            // DEBUG: Log the raw response from OpenAI
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("📄 [DEBUG] Raw OpenAI Response:")
-                print(responseString)
-                print("───────────────────────────────────")
-            }
+            // Raw response logged only on error (see error handling above)
             
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
                   let firstChoice = choices.first,
                   let message = firstChoice["message"] as? [String: Any],
                   let content = message["content"] as? String else {
-                print("❌ [DEBUG] Failed to parse OpenAI response structure")
+                print("  ❌ Failed to parse response structure")
                 throw MLXLLMError.invalidResponse
             }
             
-            // DEBUG: Log the extracted content
-            print("🎯 [DEBUG] OpenAI Content Extracted:")
-            print(content)
-            print("───────────────────────────────────")
+            // Content extracted successfully
+            
+            // Clean up potential malformed JSON (duplicate keys, etc)
+            let cleanedContent = cleanupMalformedJSON(content)
             
             // Parse the JSON response from the AI
-            guard let responseData = content.data(using: .utf8),
+            guard let responseData = cleanedContent.data(using: .utf8),
                   let analysisJson = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
                   let isValid = analysisJson["is_valid"] as? Bool,
                   let detectedActivity = analysisJson["detected_activity"] as? String,
                   let explanation = analysisJson["explanation"] as? String else {
                 
-                print("⚠️ [DEBUG] Failed to parse AI response as JSON, using fallback analysis")
+                print("  ❌ Failed to parse JSON: \(content.prefix(100))...")
                 
-                // Fallback parsing similar to MLX version
-                let isDebuggingFocus = userFocus.lowercased().contains("debug")
-                let hasCodeEvidence = detectCodeEvidence(text: text, appName: appName)
-                
-                let isValid: Bool
-                let confidence: Double
-                
-                if isDebuggingFocus && hasCodeEvidence {
-                    isValid = true
-                    confidence = 0.85
-                } else {
-                    isValid = content.lowercased().contains("aligns") || content.lowercased().contains("focused")
-                    confidence = 0.5
-                }
-                
-                let fallbackResult = MLXAnalysisResult(
-                    is_valid: isValid,
-                    explanation: isDebuggingFocus && hasCodeEvidence ? "Debugging code" : "Using \(appName)",
-                    detected_activity: detectActivity(text: text, appName: appName),
-                    confidence: confidence,
-                    timestamp: ISO8601DateFormatter().string(from: Date()),
-                    analysis_source: "remote"
-                )
-                
-                print("📊 [DEBUG] Fallback Analysis Result: \(fallbackResult)")
-                return fallbackResult
+                // For OpenAI models, throw error instead of using unreliable fallback
+                throw MLXLLMError.invalidResponse
             }
             
-            // DEBUG: Log successful JSON parsing
-            print("✅ [DEBUG] Successfully parsed AI JSON response:")
-            print("  is_valid: \(isValid)")
-            print("  detected_activity: \(detectedActivity)")
-            print("  explanation: \(explanation)")
-            if let confidence = analysisJson["confidence"] as? Double {
-                print("  confidence: \(confidence)")
-            }
+            // DEBUG: Log parsed result
+            let confidence = (analysisJson["confidence"] as? Double) ?? 0.7
+            print("  ✅ Parsed: valid=\(isValid), activity=\(detectedActivity), confidence=\(String(format: "%.2f", confidence))")
             
             var finalIsValid = isValid
             var finalConfidence = (analysisJson["confidence"] as? Double) ?? 0.7
@@ -553,14 +495,8 @@ class MLXLLMManager: ObservableObject {
                 analysis_source: "remote"
             )
             
-            // DEBUG: Log the final analysis result before returning
-            print("🏁 [DEBUG] Final Remote Analysis Result:")
-            print("  is_valid: \(finalResult.is_valid)")
-            print("  detected_activity: \(finalResult.detected_activity)")
-            print("  explanation: \(finalResult.explanation)")
-            print("  confidence: \(finalResult.confidence)")
-            print("  analysis_source: \(finalResult.analysis_source)")
-            print("───────────────────────────────────")
+            // DEBUG: Final result
+            print("  Final: \(finalResult.is_valid ? "✓ Focused" : "✗ Distracted") - \(finalResult.detected_activity)")
             
             return finalResult
             
@@ -584,6 +520,26 @@ class MLXLLMManager: ObservableObject {
             }
             throw MLXLLMError.networkError
         }
+    }
+    
+    private func cleanupMalformedJSON(_ json: String) -> String {
+        // Remove duplicate fields by parsing with regex and keeping only first occurrence
+        var cleaned = json
+        
+        // Common malformed patterns from GPT models
+        // Pattern: multiple "detected_activity" fields
+        if let regex = try? NSRegularExpression(pattern: #"("detected_activity"\s*:\s*"[^"]*")(.*?)("detected_activity"\s*:\s*"[^"]*")"#, options: []) {
+            cleaned = regex.stringByReplacingMatches(in: cleaned, 
+                                                    options: [], 
+                                                    range: NSRange(location: 0, length: cleaned.count), 
+                                                    withTemplate: "$1$2")
+        }
+        
+        // Remove trailing commas before closing braces
+        cleaned = cleaned.replacingOccurrences(of: ",\\s*}", with: "}", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: ",\\s*]", with: "]", options: .regularExpression)
+        
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func detectCodeEvidence(text: String, appName: String) -> Bool {
