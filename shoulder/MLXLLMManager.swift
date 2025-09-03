@@ -629,6 +629,54 @@ class MLXLLMManager: ObservableObject {
         return currentModelConfig?.type == .remote
     }
     
+    func batchAnalyze(_ samples: [(ocrText: String, appName: String, windowTitle: String?)]) async throws -> [MLXAnalysisResult] {
+        guard isModelReady else {
+            throw MLXLLMError.modelNotLoaded
+        }
+        
+        var results: [MLXAnalysisResult] = []
+        
+        for (index, sample) in samples.enumerated() {
+            do {
+                let result = try await analyzeScreenshot(
+                    ocrText: sample.ocrText,
+                    appName: sample.appName,
+                    windowTitle: sample.windowTitle
+                )
+                results.append(result)
+                
+                // Small delay between requests to avoid overwhelming the system
+                if index < samples.count - 1 {
+                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+                }
+                
+            } catch {
+                // Log error but continue with batch
+                print("Batch analysis error for sample \(index): \(error)")
+                
+                // Create error result
+                let errorResult = MLXAnalysisResult(
+                    is_valid: false,
+                    explanation: "Analysis failed",
+                    detected_activity: "Error",
+                    confidence: 0.0,
+                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                    analysis_source: "error"
+                )
+                results.append(errorResult)
+            }
+        }
+        
+        return results
+    }
+    
+    func testModelPerformance(sampleText: String = "Writing Swift code in Xcode for my iOS app project", appName: String = "Xcode", windowTitle: String = "MyApp.swift") async throws -> (result: MLXAnalysisResult, responseTime: TimeInterval) {
+        let startTime = Date()
+        let result = try await analyzeScreenshot(ocrText: sampleText, appName: appName, windowTitle: windowTitle)
+        let responseTime = Date().timeIntervalSince(startTime)
+        return (result, responseTime)
+    }
+    
     deinit {
         modelContainer = nil
     }

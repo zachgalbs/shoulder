@@ -61,6 +61,11 @@ struct shoulderApp: App {
                         screenshotManager.setMLXLLMManager(mlxLLMManager)
                         screenshotManager.startCapturing()
                         
+                        // Setup evaluation suite on first run
+                        Task {
+                            await EvaluationInitializer.setup()
+                        }
+                        
                         // Request notification permissions for focus session alerts
                         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
                             if granted {

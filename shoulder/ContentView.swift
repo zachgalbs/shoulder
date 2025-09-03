@@ -19,11 +19,13 @@ struct ContentView: View {
     
     enum Tab: String, CaseIterable {
         case dashboard = "Focus"
+        case evaluation = "Evaluation"
         case settings = "Settings"
         
         var icon: String {
             switch self {
             case .dashboard: return "eye.trianglebadge.exclamationmark"
+            case .evaluation: return "chart.bar.doc.horizontal"
             case .settings: return "gearshape"
             }
         }
@@ -39,6 +41,8 @@ struct ContentView: View {
                     switch selectedTab {
                     case .dashboard:
                         DashboardView()
+                    case .evaluation:
+                        EvaluationView(evaluationSuite: EvaluationSuite(mlxManager: mlxLLMManager))
                     case .settings:
                         SettingsView()
                     }

@@ -30,6 +30,11 @@ struct DesignSystem {
         static let accentPurple = Color(hex: "5856D6")
         static let accentTeal = Color(hex: "5AC8FA")
         static let accentPink = Color(hex: "FF2D55")
+        
+        // Additional colors for evaluation suite
+        static let backgroundTertiary = Color(NSColor.quaternaryLabelColor).opacity(0.1)
+        static let warningYellow = Color(hex: "FF9500")
+        static let destructiveRed = Color(hex: "FF3B30")
     }
     
     struct Spacing {
