@@ -15,7 +15,7 @@ class ApplicationBlockingManager: ObservableObject {
     @Published var whitelistedApplications: Set<String> = ["Finder", "System Preferences", "System Settings", "shoulder"]
     @Published var recentlyBlockedApps: [(app: String, timestamp: Date)] = []
     @Published var focusModeActive: Bool = false
-    @Published var blockingConfidenceThreshold: Double = 0.7
+    @Published var blockingConfidenceThreshold: Double = 0.85
     @Published var unfocusedNotificationsEnabled: Bool = true
     
     // MARK: - Persisted Settings
@@ -24,7 +24,7 @@ class ApplicationBlockingManager: ObservableObject {
     @AppStorage("unfocusedNotificationsEnabled") private var storedUnfocusedNotificationsEnabled: Bool = true
     @AppStorage("blockedApps") private var storedBlockedApps: String = ""
     @AppStorage("whitelistedApps") private var storedWhitelistedApps: String = "Finder,System Preferences,System Settings,shoulder"
-    @AppStorage("blockingConfidenceThreshold") private var storedConfidenceThreshold: Double = 0.7
+    @AppStorage("blockingConfidenceThreshold") private var storedConfidenceThreshold: Double = 0.85
     @AppStorage("focusModeActive") private var storedFocusModeActive: Bool = false
     
     // MARK: - Private Properties
@@ -43,7 +43,13 @@ class ApplicationBlockingManager: ObservableObject {
     private func loadSettings() {
         isBlockingEnabled = storedBlockingEnabled
         focusModeActive = storedFocusModeActive
-        blockingConfidenceThreshold = storedConfidenceThreshold
+        if storedConfidenceThreshold <= 0.7 {
+            // Migrate previous default to a more cautious confidence level
+            blockingConfidenceThreshold = 0.85
+            storedConfidenceThreshold = 0.85
+        } else {
+            blockingConfidenceThreshold = storedConfidenceThreshold
+        }
         unfocusedNotificationsEnabled = storedUnfocusedNotificationsEnabled
         
         if !storedBlockedApps.isEmpty {

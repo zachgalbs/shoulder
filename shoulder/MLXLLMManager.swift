@@ -239,14 +239,14 @@ class MLXLLMManager: ObservableObject {
         - Screen content (OCR text): \(text)
         
         INSTRUCTIONS:
-        Determine if the current activity is DIRECTLY RELATED to the user's stated focus.
-        - Mark as is_valid=true ONLY if the activity clearly contributes to the stated focus
-        - Mark as is_valid=false for unrelated activities (entertainment, social media, unrelated browsing, etc.)
-        - Be strict: if in doubt, mark as invalid
+        Determine if the current activity is PRODUCTIVE toward the user's stated focus.
+        - Mark is_valid=true when the activity directly advances the goal OR reasonably supports it (research, documentation, tooling, planning, communication about the task, etc.)
+        - Mark is_valid=false only for clearly unrelated or distracting content (entertainment, personal social feeds, random browsing with no connection to the goal, etc.)
+        - If the evidence is ambiguous or mixed, lean toward is_valid=true and explain why it still supports the work.
         
-        Example: If focus is "Developing my iOS application":
-        - Xcode, Swift documentation, iOS tutorials = VALID (true)
-        - Cat images, social media, news, YouTube videos = INVALID (false)
+        Examples for the focus "Developing my iOS application":
+        - Xcode, Swift documentation, design discussions, Apple Developer forums = VALID (true)
+        - Cat images, unrelated news, entertainment videos = INVALID (false)
         
         Provide a JSON response with this EXACT structure (no duplicate fields):
         {
@@ -320,14 +320,14 @@ class MLXLLMManager: ObservableObject {
         - Screen content (OCR text): \(text)
         
         INSTRUCTIONS:
-        Determine if the current activity is DIRECTLY RELATED to the user's stated focus.
-        - Mark as is_valid=true ONLY if the activity clearly contributes to the stated focus
-        - Mark as is_valid=false for unrelated activities (entertainment, social media, unrelated browsing, etc.)
-        - Be strict: if in doubt, mark as invalid
+        Determine if the current activity is PRODUCTIVE toward the user's stated focus.
+        - Mark is_valid=true when the activity directly advances the goal OR reasonably supports it (research, documentation, tooling, planning, communication about the task, etc.)
+        - Mark is_valid=false only for clearly unrelated or distracting content (entertainment, personal social feeds, random browsing with no connection to the goal, etc.)
+        - If the evidence is ambiguous or mixed, lean toward is_valid=true and explain why it still supports the work.
         
-        Example: If focus is "Developing my iOS application":
-        - Xcode, Swift documentation, iOS tutorials = VALID (true)
-        - Cat images, social media, news, YouTube videos = INVALID (false)
+        Examples for the focus "Developing my iOS application":
+        - Xcode, Swift documentation, design discussions, Apple Developer forums = VALID (true)
+        - Cat images, unrelated news, entertainment videos = INVALID (false)
         
         Provide a JSON response with this EXACT structure (no duplicate fields):
         {
@@ -669,5 +669,4 @@ struct MLXStatusView: View {
         }
     }
 }
-
 
