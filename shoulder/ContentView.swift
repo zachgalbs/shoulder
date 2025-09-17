@@ -224,7 +224,7 @@ struct SettingsView: View {
                         .foregroundColor(DesignSystem.Colors.textSecondary)
                 }
                 
-                Text("Screenshots are captured every 60 seconds")
+                Text("Screenshots are captured every 10 seconds by default")
                     .font(.caption)
                     .foregroundColor(DesignSystem.Colors.textSecondary)
             }
@@ -355,4 +355,3 @@ struct ModelSelectionView: View {
         .padding(.vertical, 4)
     }
 }
-
