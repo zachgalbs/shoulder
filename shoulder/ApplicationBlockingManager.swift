@@ -172,8 +172,8 @@ class ApplicationBlockingManager: ObservableObject {
     private func showBlockingNotification(appName: String, reason: String?) {
         let content = UNMutableNotificationContent()
         content.title = "🚫 Blocked"
-        // Keep blocking messages brief
-        let briefReason = reason != nil ? String(reason!.prefix(30)) : "Stay focused"
+        // Keep blocking messages concise but avoid chopping mid-word
+        let briefReason = reason.map { trimmedNotificationText($0) } ?? "Stay focused"
         content.body = "\(appName): \(briefReason)"
         content.sound = .default
         
@@ -189,8 +189,7 @@ class ApplicationBlockingManager: ObservableObject {
     private func showUnfocusedNotification(appName: String, analysis: MLXAnalysisResult) {
         let content = UNMutableNotificationContent()
         content.title = "⚠️ Off-Task"
-        // Truncate explanation to 30 chars max for brevity
-        let briefExplanation = String(analysis.explanation.prefix(30))
+        let briefExplanation = trimmedNotificationText(analysis.explanation)
         content.body = "\(appName): \(briefExplanation)"
         content.sound = .default
         
@@ -285,6 +284,22 @@ class ApplicationBlockingManager: ObservableObject {
     }
 }
 
+extension ApplicationBlockingManager {
+    /// Returns a user-visible notification string without abruptly cutting words.
+    private func trimmedNotificationText(_ text: String, maxLength: Int = 120) -> String {
+        guard text.count > maxLength else { return text }
+
+        let index = text.index(text.startIndex, offsetBy: maxLength)
+        let truncated = text[..<index]
+
+        if let lastSpace = truncated.lastIndex(of: " ") {
+            return String(truncated[..<lastSpace]) + "…"
+        }
+
+        return String(truncated) + "…"
+    }
+}
+
 // MARK: - Statistics
 
 extension ApplicationBlockingManager {
@@ -302,4 +317,3 @@ extension ApplicationBlockingManager {
         return (recentlyBlockedApps.count, today, mostBlocked)
     }
 }
-
