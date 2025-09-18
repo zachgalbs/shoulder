@@ -73,6 +73,30 @@ struct MLXAnalysisResult: Codable {
     let analysis_source: String  // "llm" for actual AI analysis, "error" for failures
 }
 
+struct EnhancedAnalysisResult: Codable {
+    let student_justification: String
+    let student_confidence: Double
+    let teacher_verdict: Bool
+    let teacher_reasoning: String
+    let teacher_confidence: Double
+    let final_classification: Bool
+    let detected_activity: String
+    let timestamp: String
+    let analysis_source: String
+    
+    // Convert to legacy format for backward compatibility
+    func toLegacyResult() -> MLXAnalysisResult {
+        return MLXAnalysisResult(
+            is_valid: final_classification,
+            explanation: teacher_reasoning,
+            detected_activity: detected_activity,
+            confidence: teacher_confidence,
+            timestamp: timestamp,
+            analysis_source: analysis_source
+        )
+    }
+}
+
 @MainActor
 class MLXLLMManager: ObservableObject {
     @Published var isModelLoaded = false
@@ -161,11 +185,15 @@ class MLXLLMManager: ObservableObject {
     }
     
     func analyzeScreenshot(ocrText: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
-        
+        // Use enhanced dual-LLM analysis and convert to legacy format for backward compatibility
+        let enhancedAnalysis = try await analyzeScreenshotEnhanced(ocrText: ocrText, appName: appName, windowTitle: windowTitle)
+        return enhancedAnalysis.toLegacyResult()
+    }
+    
+    func analyzeScreenshotEnhanced(ocrText: String, appName: String, windowTitle: String?) async throws -> EnhancedAnalysisResult {
         guard isModelReady else {
             throw MLXLLMError.modelNotLoaded
         }
-        
         
         isAnalyzing = true
         defer { 
@@ -176,7 +204,9 @@ class MLXLLMManager: ObservableObject {
         
         let truncatedText = String(ocrText.prefix(1500))
         
-        let analysis: MLXAnalysisResult
+        print("🎭 Enhanced Dual-LLM Analysis Starting: Student → Teacher")
+        
+        let enhancedAnalysis: EnhancedAnalysisResult
         
         guard let config = AIModelConfiguration.getConfiguration(for: selectedModel) else {
             throw MLXLLMError.unsupportedModel
@@ -185,45 +215,89 @@ class MLXLLMManager: ObservableObject {
         switch config.type {
         case .local:
             if let container = modelContainer {
-                // Use MLX model for analysis
-                analysis = try await performMLXAnalysis(
+                // Step 1: Student justifies the activity
+                let (studentJustification, studentConfidence) = try await performJustificationAnalysisMLX(
                     container: container,
                     text: truncatedText,
                     appName: appName,
                     windowTitle: windowTitle
+                )
+                
+                // Step 2: Teacher judges the justification
+                let (teacherVerdict, teacherReasoning, teacherConfidence) = try await performJudgmentAnalysisMLX(
+                    container: container,
+                    text: truncatedText,
+                    appName: appName,
+                    windowTitle: windowTitle,
+                    justification: studentJustification
+                )
+                
+                enhancedAnalysis = EnhancedAnalysisResult(
+                    student_justification: studentJustification,
+                    student_confidence: studentConfidence,
+                    teacher_verdict: teacherVerdict,
+                    teacher_reasoning: teacherReasoning,
+                    teacher_confidence: teacherConfidence,
+                    final_classification: teacherVerdict,
+                    detected_activity: detectActivity(text: truncatedText, appName: appName),
+                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                    analysis_source: "enhanced_llm"
                 )
             } else {
                 throw MLXLLMError.modelNotLoaded
             }
             
         case .remote:
-            // Use remote API for analysis
-            analysis = try await performRemoteAnalysis(
+            // Step 1: Student justifies the activity
+            let (studentJustification, studentConfidence) = try await performJustificationAnalysisRemote(
                 text: truncatedText,
                 appName: appName,
                 windowTitle: windowTitle
             )
+            
+            // Step 2: Teacher judges the justification
+            let (teacherVerdict, teacherReasoning, teacherConfidence) = try await performJudgmentAnalysisRemote(
+                text: truncatedText,
+                appName: appName,
+                windowTitle: windowTitle,
+                justification: studentJustification
+            )
+            
+            enhancedAnalysis = EnhancedAnalysisResult(
+                student_justification: studentJustification,
+                student_confidence: studentConfidence,
+                teacher_verdict: teacherVerdict,
+                teacher_reasoning: teacherReasoning,
+                teacher_confidence: teacherConfidence,
+                final_classification: teacherVerdict,
+                detected_activity: detectActivity(text: truncatedText, appName: appName),
+                timestamp: ISO8601DateFormatter().string(from: Date()),
+                analysis_source: "enhanced_remote"
+            )
         }
         
-        // Analysis completed - timing calculation removed as it was unused
-        
-        lastAnalysis = analysis
-        analysisHistory[appName] = analysis
+        // Update state with legacy format for existing UI compatibility
+        let legacyResult = enhancedAnalysis.toLegacyResult()
+        lastAnalysis = legacyResult
+        analysisHistory[appName] = legacyResult
         
         // Send notification
-        print("📢 Analysis complete: \(analysis.is_valid ? "Focused" : "Distracted") - \(analysis.detected_activity) (\(String(format: "%.0f%%", analysis.confidence * 100)))")
+        print("📢 Enhanced Analysis Complete: \(enhancedAnalysis.final_classification ? "FOCUSED" : "DISTRACTED")")
+        print("   Student: \(enhancedAnalysis.student_justification)")
+        print("   Teacher: \(enhancedAnalysis.teacher_reasoning)")
         
-        // Send notification for blocking manager to handle
+        // Send notification for blocking manager to handle (using legacy format)
         NotificationCenter.default.post(
             name: .mlxAnalysisCompleted,
             object: nil,
-            userInfo: ["analysis": analysis, "appName": appName]
+            userInfo: ["analysis": legacyResult, "appName": appName]
         )
         
+        // Save both enhanced and legacy formats
+        await saveEnhancedAnalysisResult(enhancedAnalysis, appName: appName)
+        await saveAnalysisResult(legacyResult, appName: appName)
         
-        await saveAnalysisResult(analysis, appName: appName)
-        
-        return analysis
+        return enhancedAnalysis
     }
     
     private func performMLXAnalysis(container: ModelContainer, text: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
@@ -302,6 +376,295 @@ class MLXLLMManager: ObservableObject {
         print("  Final: \(result.is_valid ? "✓ Focused" : "✗ Distracted") - \(result.detected_activity)")
         
         return result
+    }
+    
+    private func performJustificationAnalysisMLX(container: ModelContainer, text: String, appName: String, windowTitle: String?) async throws -> (String, Double) {
+        let prompt = """
+        You are a student focusing on: "\(userFocus)"
+        
+        Your teacher sees this activity on your screen:
+        - Application: \(appName)
+        - Window title: \(windowTitle ?? "N/A")
+        - Screen content: \(text)
+        
+        Write a compelling justification for why this activity supports your focus goal. Be creative and persuasive - you want to convince your teacher this is legitimate work toward your goal.
+        
+        Provide a JSON response with this EXACT structure:
+        {
+            "justification": "your persuasive explanation (1-2 sentences)",
+            "confidence": 0.0-1.0
+        }
+        
+        Respond ONLY with valid JSON, no additional text.
+        """
+        
+        print("🎓 Student MLX Justification: \(selectedModel) | Focus: \(userFocus) | App: \(appName)")
+        
+        let session = ChatSession(container)
+        let generatedText = try await session.respond(to: prompt)
+        
+        guard let jsonData = generatedText.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let justification = json["justification"] as? String else {
+            print("  ❌ Failed to parse student justification JSON")
+            throw MLXLLMError.invalidResponse
+        }
+        
+        let confidence = (json["confidence"] as? Double) ?? 0.7
+        print("  ✅ Student says: \(justification) (confidence: \(String(format: "%.2f", confidence)))")
+        
+        return (justification, confidence)
+    }
+    
+    private func performJustificationAnalysisRemote(text: String, appName: String, windowTitle: String?) async throws -> (String, Double) {
+        guard !openaiApiKey.isEmpty else {
+            throw MLXLLMError.apiKeyRequired
+        }
+        
+        let prompt = """
+        You are a student focusing on: "\(userFocus)"
+        
+        Your teacher sees this activity on your screen:
+        - Application: \(appName)
+        - Window title: \(windowTitle ?? "N/A")
+        - Screen content: \(text)
+        
+        Write a compelling justification for why this activity supports your focus goal. Be creative and persuasive - you want to convince your teacher this is legitimate work toward your goal.
+        
+        Provide a JSON response with this EXACT structure:
+        {
+            "justification": "your persuasive explanation (1-2 sentences)",
+            "confidence": 0.0-1.0
+        }
+        
+        Respond ONLY with valid JSON, no additional text.
+        """
+        
+        print("🎓 Student Remote Justification: \(selectedModel) | Focus: \(userFocus) | App: \(appName)")
+        
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(openaiApiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0
+        
+        var requestBody: [String: Any] = [
+            "model": selectedModel,
+            "messages": [
+                ["role": "user", "content": prompt]
+            ]
+        ]
+        
+        if selectedModel.hasPrefix("gpt-5") {
+            requestBody["max_completion_tokens"] = 8000
+            requestBody["reasoning_effort"] = "minimal"
+            requestBody["verbosity"] = "low"
+            
+            requestBody["response_format"] = [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "student_justification",
+                    "schema": [
+                        "type": "object",
+                        "properties": [
+                            "justification": ["type": "string"],
+                            "confidence": ["type": "number", "minimum": 0, "maximum": 1]
+                        ],
+                        "required": ["justification", "confidence"]
+                    ]
+                ]
+            ]
+        } else {
+            requestBody["max_tokens"] = 200
+            requestBody["temperature"] = 0.1
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw MLXLLMError.networkError
+        }
+        
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            throw MLXLLMError.invalidResponse
+        }
+        
+        let cleanedContent = cleanupMalformedJSON(content)
+        
+        guard let responseData = cleanedContent.data(using: .utf8),
+              let analysisJson = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let justification = analysisJson["justification"] as? String else {
+            print("  ❌ Failed to parse student justification JSON: \(content.prefix(100))...")
+            throw MLXLLMError.invalidResponse
+        }
+        
+        let confidence = (analysisJson["confidence"] as? Double) ?? 0.7
+        print("  ✅ Student says: \(justification) (confidence: \(String(format: "%.2f", confidence)))")
+        
+        return (justification, confidence)
+    }
+    
+    private func performJudgmentAnalysisMLX(container: ModelContainer, text: String, appName: String, windowTitle: String?, justification: String) async throws -> (Bool, String, Double) {
+        let prompt = """
+        You are a teacher with students who must stay focused on their goals.
+        
+        STUDENT'S GOAL: "\(userFocus)"
+        
+        STUDENT'S SCREEN ACTIVITY:
+        - Application: \(appName)
+        - Window title: \(windowTitle ?? "N/A")
+        - Screen content: \(text)
+        
+        STUDENT'S JUSTIFICATION: "\(justification)"
+        
+        As a teacher, evaluate whether this student is truly on task or trying to deceive you. Consider:
+        - Does the screen content actually support their goal?
+        - Is their justification reasonable or just creative excuses?
+        - Are they genuinely productive or just trying to get away with something?
+        
+        Be a fair but discerning teacher. Students can be clever with justifications, but you can see through weak excuses.
+        
+        Provide a JSON response with this EXACT structure:
+        {
+            "verdict": true/false,
+            "reasoning": "your teaching assessment (1-2 sentences)",
+            "confidence": 0.0-1.0
+        }
+        
+        Respond ONLY with valid JSON, no additional text.
+        """
+        
+        print("👩‍🏫 Teacher MLX Judgment: \(selectedModel) | Focus: \(userFocus)")
+        
+        let session = ChatSession(container)
+        let generatedText = try await session.respond(to: prompt)
+        
+        guard let jsonData = generatedText.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let verdict = json["verdict"] as? Bool,
+              let reasoning = json["reasoning"] as? String else {
+            print("  ❌ Failed to parse teacher judgment JSON")
+            throw MLXLLMError.invalidResponse
+        }
+        
+        let confidence = (json["confidence"] as? Double) ?? 0.7
+        print("  ✅ Teacher says: \(verdict ? "FOCUSED" : "DISTRACTED") - \(reasoning) (confidence: \(String(format: "%.2f", confidence)))")
+        
+        return (verdict, reasoning, confidence)
+    }
+    
+    private func performJudgmentAnalysisRemote(text: String, appName: String, windowTitle: String?, justification: String) async throws -> (Bool, String, Double) {
+        guard !openaiApiKey.isEmpty else {
+            throw MLXLLMError.apiKeyRequired
+        }
+        
+        let prompt = """
+        You are a teacher with students who must stay focused on their goals.
+        
+        STUDENT'S GOAL: "\(userFocus)"
+        
+        STUDENT'S SCREEN ACTIVITY:
+        - Application: \(appName)
+        - Window title: \(windowTitle ?? "N/A")
+        - Screen content: \(text)
+        
+        STUDENT'S JUSTIFICATION: "\(justification)"
+        
+        As a teacher, evaluate whether this student is truly on task or trying to deceive you. Consider:
+        - Does the screen content actually support their goal?
+        - Is their justification reasonable or just creative excuses?
+        - Are they genuinely productive or just trying to get away with something?
+        
+        Be a fair but discerning teacher. Students can be clever with justifications, but you can see through weak excuses.
+        
+        Provide a JSON response with this EXACT structure:
+        {
+            "verdict": true/false,
+            "reasoning": "your teaching assessment (1-2 sentences)",
+            "confidence": 0.0-1.0
+        }
+        
+        Respond ONLY with valid JSON, no additional text.
+        """
+        
+        print("👩‍🏫 Teacher Remote Judgment: \(selectedModel) | Focus: \(userFocus)")
+        
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(openaiApiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0
+        
+        var requestBody: [String: Any] = [
+            "model": selectedModel,
+            "messages": [
+                ["role": "user", "content": prompt]
+            ]
+        ]
+        
+        if selectedModel.hasPrefix("gpt-5") {
+            requestBody["max_completion_tokens"] = 8000
+            requestBody["reasoning_effort"] = "minimal"
+            requestBody["verbosity"] = "low"
+            
+            requestBody["response_format"] = [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "teacher_judgment",
+                    "schema": [
+                        "type": "object",
+                        "properties": [
+                            "verdict": ["type": "boolean"],
+                            "reasoning": ["type": "string"],
+                            "confidence": ["type": "number", "minimum": 0, "maximum": 1]
+                        ],
+                        "required": ["verdict", "reasoning", "confidence"]
+                    ]
+                ]
+            ]
+        } else {
+            requestBody["max_tokens"] = 200
+            requestBody["temperature"] = 0.1
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw MLXLLMError.networkError
+        }
+        
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            throw MLXLLMError.invalidResponse
+        }
+        
+        let cleanedContent = cleanupMalformedJSON(content)
+        
+        guard let responseData = cleanedContent.data(using: .utf8),
+              let analysisJson = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let verdict = analysisJson["verdict"] as? Bool,
+              let reasoning = analysisJson["reasoning"] as? String else {
+            print("  ❌ Failed to parse teacher judgment JSON: \(content.prefix(100))...")
+            throw MLXLLMError.invalidResponse
+        }
+        
+        let confidence = (analysisJson["confidence"] as? Double) ?? 0.7
+        print("  ✅ Teacher says: \(verdict ? "FOCUSED" : "DISTRACTED") - \(reasoning) (confidence: \(String(format: "%.2f", confidence)))")
+        
+        return (verdict, reasoning, confidence)
     }
     
     private func performRemoteAnalysis(text: String, appName: String, windowTitle: String?) async throws -> MLXAnalysisResult {
@@ -602,6 +965,27 @@ class MLXLLMManager: ObservableObject {
             
             try data.write(to: analysisFile)
         } catch {
+        }
+    }
+    
+    private func saveEnhancedAnalysisResult(_ result: EnhancedAnalysisResult, appName: String) async {
+        let dateString = DateFormatters.fileDate.string(from: Date())
+        let timeString = DateFormatters.fileTime.string(from: Date())
+        
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let analysisDir = homeDir.appendingPathComponent("src/shoulder/analyses/\(dateString)")
+        let enhancedFile = analysisDir.appendingPathComponent("enhanced-analysis-\(timeString).json")
+        
+        do {
+            try FileManager.default.createDirectory(at: analysisDir, withIntermediateDirectories: true, attributes: nil)
+            
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(result)
+            
+            try data.write(to: enhancedFile)
+        } catch {
+            print("Failed to save enhanced analysis: \(error.localizedDescription)")
         }
     }
     
