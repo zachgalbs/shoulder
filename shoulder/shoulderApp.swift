@@ -59,6 +59,7 @@ struct shoulderApp: App {
                     .onAppear {
                         screenMonitor.setModelContext(sharedModelContainer.mainContext)
                         screenshotManager.setMLXLLMManager(mlxLLMManager)
+                        screenshotManager.setFocusSessionManager(focusManager)
                         screenshotManager.startCapturing()
                         
                         // Request notification permissions for focus session alerts

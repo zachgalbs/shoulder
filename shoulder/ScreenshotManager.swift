@@ -110,6 +110,7 @@ class ScreenshotManager: ObservableObject {
     private var timer: Timer?
     private var baseDirectoryURL: URL?
     private var mlxLLMManager: MLXLLMManager?
+    private var focusSessionManager: FocusSessionManager?
     @Published var lastOCRText: String?
     
     // ScreenCaptureKit properties
@@ -150,6 +151,10 @@ class ScreenshotManager: ObservableObject {
         }
     }
     
+    func setFocusSessionManager(_ manager: FocusSessionManager) {
+        self.focusSessionManager = manager
+    }
+    
     @MainActor
     private func monitorServerReadiness() async {
         guard let mlxManager = mlxLLMManager else { return }
@@ -168,6 +173,12 @@ class ScreenshotManager: ObservableObject {
         guard let mlxManager = mlxLLMManager,
               !pendingAnalyses.isEmpty else { return }
         
+        // Check if there's still an active focus session before processing pending analyses
+        guard let focusManager = focusSessionManager, focusManager.hasActiveSession else {
+            print("No active focus session - clearing pending analyses")
+            pendingAnalyses.removeAll()
+            return
+        }
         
         for pending in pendingAnalyses {
             do {
@@ -722,6 +733,12 @@ class ScreenshotManager: ObservableObject {
     
     @MainActor
     private func triggerMLXAnalysis(ocrText: String, with mlxManager: MLXLLMManager) {
+        // Check if there's an active focus session before proceeding with analysis
+        guard let focusManager = focusSessionManager, focusManager.hasActiveSession else {
+            print("No active focus session - skipping analysis")
+            return
+        }
+        
         // Get current app context (simplified for demo)
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
         
