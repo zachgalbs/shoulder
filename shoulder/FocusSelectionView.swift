@@ -10,12 +10,7 @@ import SwiftUI
 struct FocusSelectionView: View {
     @EnvironmentObject var focusManager: FocusSessionManager
     @State private var focusText: String = ""
-    @State private var selectedDuration: Int = 60
-    @State private var customDuration: String = ""
-    @State private var useCustomDuration: Bool = false
-    @State private var customDurationError: String?
-    
-    let predefinedDurations = [15, 30, 45, 60, 90, 120]
+    @State private var durationMinutes: Int = 30
     
     var body: some View {
         GeometryReader { geometry in
@@ -42,7 +37,8 @@ struct FocusSelectionView: View {
                 if !focusManager.focusText.isEmpty {
                     focusText = focusManager.focusText
                 }
-                selectedDuration = focusManager.focusDurationMinutes
+                let storedDuration = focusManager.focusDurationMinutes
+                durationMinutes = storedDuration > 0 ? storedDuration : 30
             }
         }
     }
@@ -141,7 +137,7 @@ struct FocusSelectionView: View {
                     .font(dynamicTextFieldFont(for: width))
                     .frame(maxWidth: .infinity)
                 
-                Text("Your activities will be monitored to help you stay on track")
+                Text("Your activities will be compared to your focus")
                     .font(.caption)
                     .foregroundColor(DesignSystem.Colors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -151,96 +147,36 @@ struct FocusSelectionView: View {
             
             // Duration selection section
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.medium) {
-                Label("How long do you want to focus?", systemImage: "timer")
+                Label("Focus duration", systemImage: "timer")
                     .font(.headline)
                     .foregroundColor(DesignSystem.Colors.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                
-                // Predefined duration buttons with adaptive grid
-                LazyVGrid(
-                    columns: adaptiveColumns(for: width),
-                    spacing: DesignSystem.Spacing.small
-                ) {
-                    ForEach(predefinedDurations, id: \.self) { duration in
-                        DurationButton(
-                            duration: duration,
-                            isSelected: !useCustomDuration && selectedDuration == duration,
-                            width: width,
-                            action: {
-                                selectedDuration = duration
-                                useCustomDuration = false
-                            }
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                
-                // Custom duration input
-                HStack {
-                    Button(action: {
-                        useCustomDuration = true
-                    }) {
-                        HStack(spacing: DesignSystem.Spacing.xSmall) {
-                            Image(systemName: useCustomDuration ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(useCustomDuration ? DesignSystem.Colors.accentBlue : DesignSystem.Colors.textSecondary)
-                            Text("Custom:")
-                                .foregroundColor(DesignSystem.Colors.textPrimary)
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.small) {
+                    Slider(value: Binding(
+                        get: { Double(durationMinutes) },
+                        set: { newValue in
+                            let clamped = min(max(newValue, 5), 240)
+                            let snapped = (clamped / 5).rounded() * 5
+                            durationMinutes = Int(snapped)
                         }
+                    ), in: 5...240, step: 5)
+                        .tint(DesignSystem.Colors.accentBlue)
+
+                    HStack {
+                        Text("\(durationMinutes) minutes")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Stepper("", value: $durationMinutes, in: 5...240, step: 5)
+                            .labelsHidden()
                     }
-                    .buttonStyle(.plain)
-                    
-                    TextField("Minutes", text: $customDuration)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                        .disabled(!useCustomDuration)
-                        .onChange(of: customDuration) {
-                            if useCustomDuration {
-                                if let minutes = Int(customDuration) {
-                                    if minutes <= 0 {
-                                        customDurationError = "Duration must be greater than 0"
-                                    } else if minutes > 480 {
-                                        customDurationError = "Duration cannot exceed 8 hours (480 minutes)"
-                                    } else {
-                                        customDurationError = nil
-                                        selectedDuration = minutes
-                                    }
-                                } else if !customDuration.isEmpty {
-                                    customDurationError = "Please enter a valid number"
-                                } else {
-                                    customDurationError = nil
-                                }
-                            }
-                        }
-                    
-                    Text("minutes")
-                        .foregroundColor(DesignSystem.Colors.textSecondary)
-                    
-                    Spacer()
-                }
-                
-                if let error = customDurationError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
     }
-    
-    private func adaptiveColumns(for width: CGFloat) -> [GridItem] {
-        let effectiveWidth = min(width, 800)
-        let minItemWidth: CGFloat = 100
-        let spacing: CGFloat = DesignSystem.Spacing.small
-        let horizontalPadding = dynamicPadding(for: effectiveWidth) * 2
-        let availableWidth = effectiveWidth - horizontalPadding
-        let numberOfColumns = max(2, Int(availableWidth / (minItemWidth + spacing)))
-        
-        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: min(numberOfColumns, 3))
-    }
-    
     
     private func dynamicTextFieldFont(for width: CGFloat) -> Font {
         if width < 400 {
@@ -287,11 +223,6 @@ struct FocusSelectionView: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             
-            if !focusText.isEmpty {
-                Text("Session will last \(selectedDuration) minutes")
-                    .font(.caption)
-                    .foregroundColor(DesignSystem.Colors.textSecondary)
-            }
         }
         .padding(.top, DesignSystem.Spacing.medium)
         .frame(maxWidth: .infinity)
@@ -327,72 +258,6 @@ struct FocusSelectionView: View {
     
     private func startFocusSession() {
         guard !focusText.isEmpty else { return }
-        guard customDurationError == nil else { return }
-        
-        let duration = useCustomDuration ? (Int(customDuration) ?? 60) : selectedDuration
-        focusManager.startFocusSession(focus: focusText, durationMinutes: duration)
+        focusManager.startFocusSession(focus: focusText, durationMinutes: durationMinutes)
     }
 }
-
-struct DurationButton: View {
-    let duration: Int
-    let isSelected: Bool
-    let width: CGFloat
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: DesignSystem.Spacing.xxSmall) {
-                Text("\(duration)")
-                    .font(dynamicDurationFont(for: width))
-                    .fontWeight(.semibold)
-                    .minimumScaleFactor(0.7)
-                Text("min")
-                    .font(.caption)
-            }
-            .foregroundColor(isSelected ? .white : DesignSystem.Colors.textPrimary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, dynamicDurationPadding(for: width))
-            .padding(.horizontal, DesignSystem.Spacing.small)
-            .background(
-                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                    .fill(isSelected ? 
-                        LinearGradient(
-                            colors: [DesignSystem.Colors.accentBlue, DesignSystem.Colors.accentPurple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ) : 
-                        LinearGradient(
-                            colors: [Color(NSColor.controlBackgroundColor)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                    .stroke(isSelected ? Color.clear : DesignSystem.Colors.textTertiary.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-    
-    private func dynamicDurationFont(for width: CGFloat) -> Font {
-        if width < 400 {
-            return .body
-        } else if width < 600 {
-            return .title3
-        } else {
-            return .title3
-        }
-    }
-    
-    private func dynamicDurationPadding(for width: CGFloat) -> CGFloat {
-        if width < 400 {
-            return DesignSystem.Spacing.xSmall
-        } else {
-            return DesignSystem.Spacing.small
-        }
-    }
-}
-
