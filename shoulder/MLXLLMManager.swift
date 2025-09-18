@@ -336,7 +336,7 @@ class MLXLLMManager: ObservableObject {
             }
         }
         
-        let truncatedText = String(ocrText.prefix(1500))
+        let fullText = ocrText
         
         print("🎭 Enhanced Dual-LLM Analysis Starting: Student → Teacher")
         
@@ -352,7 +352,7 @@ class MLXLLMManager: ObservableObject {
                 // Step 1: Student justifies the activity
                 let (studentJustification, studentConfidence) = try await performJustificationAnalysisMLX(
                     container: container,
-                    text: truncatedText,
+                    text: fullText,
                     appName: appName,
                     windowTitle: windowTitle
                 )
@@ -360,7 +360,7 @@ class MLXLLMManager: ObservableObject {
                 // Step 2: Teacher judges the justification
                 let (teacherVerdict, teacherReasoning, teacherConfidence) = try await performJudgmentAnalysisMLX(
                     container: container,
-                    text: truncatedText,
+                    text: fullText,
                     appName: appName,
                     windowTitle: windowTitle,
                     justification: studentJustification
@@ -373,7 +373,7 @@ class MLXLLMManager: ObservableObject {
                     teacher_reasoning: teacherReasoning,
                     teacher_confidence: teacherConfidence,
                     final_classification: teacherVerdict,
-                    detected_activity: detectActivity(text: truncatedText, appName: appName),
+                    detected_activity: detectActivity(text: fullText, appName: appName),
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     analysis_source: "enhanced_llm"
                 )
@@ -384,14 +384,14 @@ class MLXLLMManager: ObservableObject {
         case .remote:
             // Step 1: Student justifies the activity
             let (studentJustification, studentConfidence) = try await performJustificationAnalysisRemote(
-                text: truncatedText,
+                text: fullText,
                 appName: appName,
                 windowTitle: windowTitle
             )
             
             // Step 2: Teacher judges the justification
             let (teacherVerdict, teacherReasoning, teacherConfidence) = try await performJudgmentAnalysisRemote(
-                text: truncatedText,
+                text: fullText,
                 appName: appName,
                 windowTitle: windowTitle,
                 justification: studentJustification
@@ -404,7 +404,7 @@ class MLXLLMManager: ObservableObject {
                 teacher_reasoning: teacherReasoning,
                 teacher_confidence: teacherConfidence,
                 final_classification: teacherVerdict,
-                detected_activity: detectActivity(text: truncatedText, appName: appName),
+                detected_activity: detectActivity(text: fullText, appName: appName),
                 timestamp: ISO8601DateFormatter().string(from: Date()),
                 analysis_source: "enhanced_remote"
             )
