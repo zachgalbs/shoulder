@@ -12,7 +12,7 @@ import UserNotifications
 @MainActor
 class FocusSessionManager: ObservableObject {
     @AppStorage("focusText") var focusText: String = ""
-    @AppStorage("focusDurationMinutes") var focusDurationMinutes: Int = 60
+    @AppStorage("focusDurationMinutes") var focusDurationMinutes: Int = 30
     @AppStorage("focusStartTime") private var focusStartTimeInterval: Double = 0
     @AppStorage("focusEndTime") private var focusEndTimeInterval: Double = 0
     @AppStorage("hasActiveSession") var hasActiveSession: Bool = false

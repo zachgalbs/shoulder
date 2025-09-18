@@ -74,8 +74,8 @@ struct MLXAnalysisResult: Codable {
 }
 
 struct EnhancedAnalysisResult: Codable {
-    let student_justification: String
-    let student_confidence: Double
+    let user_justification: String
+    let user_confidence: Double
     let teacher_verdict: Bool
     let teacher_reasoning: String
     let teacher_confidence: Double
@@ -86,13 +86,22 @@ struct EnhancedAnalysisResult: Codable {
     
     // Convert to legacy format for backward compatibility
     func toLegacyResult() -> MLXAnalysisResult {
+        let legacySource: String
+        switch analysis_source {
+        case "enhanced_llm":
+            legacySource = "llm"
+        case "enhanced_remote":
+            legacySource = "remote"
+        default:
+            legacySource = analysis_source
+        }
         return MLXAnalysisResult(
             is_valid: final_classification,
             explanation: teacher_reasoning,
             detected_activity: detected_activity,
             confidence: teacher_confidence,
             timestamp: timestamp,
-            analysis_source: analysis_source
+            analysis_source: legacySource
         )
     }
 }
@@ -106,11 +115,17 @@ class MLXLLMManager: ObservableObject {
     @Published var analysisHistory: [String: MLXAnalysisResult] = [:]
     @Published var modelLoadingMessage = "Initializing MLX..."
     @AppStorage("userFocus") var userFocus: String = "Writing code"
-    @AppStorage("selectedModel") var selectedModel: String = "mlx-community/Qwen2.5-3B-Instruct-4bit"
+    @AppStorage("selectedModel") var selectedModel: String = "gpt-5-mini"
     @AppStorage("openaiApiKey") var openaiApiKey: String = ""
     
     private let analysisQueue = DispatchQueue(label: "com.shoulder.mlx.analysis", qos: .userInitiated)
     private var modelContainer: ModelContainer?
+    private let debugLoggingEnabled = false
+    
+    private func debugLog(_ message: @autoclosure () -> String) {
+        guard debugLoggingEnabled else { return }
+        print(message())
+    }
     
     init() {
         Task {
@@ -204,7 +219,7 @@ class MLXLLMManager: ObservableObject {
         
         let truncatedText = String(ocrText.prefix(1500))
         
-        print("🎭 Enhanced Dual-LLM Analysis Starting: Student → Teacher")
+        debugLog("🎭 Enhanced Dual-LLM Analysis Starting: User → Teacher")
         
         let enhancedAnalysis: EnhancedAnalysisResult
         
@@ -215,8 +230,8 @@ class MLXLLMManager: ObservableObject {
         switch config.type {
         case .local:
             if let container = modelContainer {
-                // Step 1: Student justifies the activity
-                let (studentJustification, studentConfidence) = try await performJustificationAnalysisMLX(
+                // Step 1: User justifies the activity
+                let (userJustification, userConfidence) = try await performJustificationAnalysisMLX(
                     container: container,
                     text: truncatedText,
                     appName: appName,
@@ -229,12 +244,12 @@ class MLXLLMManager: ObservableObject {
                     text: truncatedText,
                     appName: appName,
                     windowTitle: windowTitle,
-                    justification: studentJustification
+                    justification: userJustification
                 )
                 
                 enhancedAnalysis = EnhancedAnalysisResult(
-                    student_justification: studentJustification,
-                    student_confidence: studentConfidence,
+                    user_justification: userJustification,
+                    user_confidence: userConfidence,
                     teacher_verdict: teacherVerdict,
                     teacher_reasoning: teacherReasoning,
                     teacher_confidence: teacherConfidence,
@@ -248,8 +263,8 @@ class MLXLLMManager: ObservableObject {
             }
             
         case .remote:
-            // Step 1: Student justifies the activity
-            let (studentJustification, studentConfidence) = try await performJustificationAnalysisRemote(
+            // Step 1: User justifies the activity
+            let (userJustification, userConfidence) = try await performJustificationAnalysisRemote(
                 text: truncatedText,
                 appName: appName,
                 windowTitle: windowTitle
@@ -260,12 +275,12 @@ class MLXLLMManager: ObservableObject {
                 text: truncatedText,
                 appName: appName,
                 windowTitle: windowTitle,
-                justification: studentJustification
+                justification: userJustification
             )
             
             enhancedAnalysis = EnhancedAnalysisResult(
-                student_justification: studentJustification,
-                student_confidence: studentConfidence,
+                user_justification: userJustification,
+                user_confidence: userConfidence,
                 teacher_verdict: teacherVerdict,
                 teacher_reasoning: teacherReasoning,
                 teacher_confidence: teacherConfidence,
@@ -282,9 +297,9 @@ class MLXLLMManager: ObservableObject {
         analysisHistory[appName] = legacyResult
         
         // Send notification
-        print("📢 Enhanced Analysis Complete: \(enhancedAnalysis.final_classification ? "FOCUSED" : "DISTRACTED")")
-        print("   Student: \(enhancedAnalysis.student_justification)")
-        print("   Teacher: \(enhancedAnalysis.teacher_reasoning)")
+        let summaryStatus = enhancedAnalysis.final_classification ? "FOCUSED" : "DISTRACTED"
+        let teacherConfidence = String(format: "%.0f%%", enhancedAnalysis.teacher_confidence * 100)
+        print("📢 Focus analysis: status=\(summaryStatus), teacher=\(enhancedAnalysis.teacher_reasoning) [confidence \(teacherConfidence)], user=\(enhancedAnalysis.user_justification)")
         
         // Send notification for blocking manager to handle (using legacy format)
         NotificationCenter.default.post(
@@ -334,7 +349,7 @@ class MLXLLMManager: ObservableObject {
         """
         
         // DEBUG: Log MLX analysis request
-        print("🧠 MLX Analysis: \(selectedModel) | Focus: \(userFocus) | App: \(appName) | OCR: \(text.count) chars")
+        debugLog("🧠 MLX Analysis: \(selectedModel) | Focus: \(userFocus) | App: \(appName) | OCR: \(text.count) chars")
         
         // Create a chat session for the analysis
         let session = ChatSession(container)
@@ -344,7 +359,7 @@ class MLXLLMManager: ObservableObject {
         
         // DEBUG: Log MLX response (first 100 chars)
         let preview = String(generatedText.prefix(100))
-        print("  Response: \(preview)\(generatedText.count > 100 ? "..." : "")")
+        debugLog("  Response: \(preview)\(generatedText.count > 100 ? "..." : "")")
         
         // Parse the JSON response
         guard let jsonData = generatedText.data(using: String.Encoding.utf8),
@@ -360,7 +375,7 @@ class MLXLLMManager: ObservableObject {
         
         // DEBUG: Log parsed result
         let confidence = (json["confidence"] as? Double) ?? 0.7
-        print("  ✅ Parsed: valid=\(isValid), activity=\(detectedActivity), confidence=\(String(format: "%.2f", confidence))")
+        debugLog("  ✅ Parsed: valid=\(isValid), activity=\(detectedActivity), confidence=\(String(format: "%.2f", confidence))")
         
         // Return the LLM's analysis without any overrides or modifications
         let result = MLXAnalysisResult(
@@ -373,21 +388,21 @@ class MLXLLMManager: ObservableObject {
         )
         
         // DEBUG: Final result
-        print("  Final: \(result.is_valid ? "✓ Focused" : "✗ Distracted") - \(result.detected_activity)")
+        debugLog("  Final: \(result.is_valid ? "✓ Focused" : "✗ Distracted") - \(result.detected_activity)")
         
         return result
     }
     
     private func performJustificationAnalysisMLX(container: ModelContainer, text: String, appName: String, windowTitle: String?) async throws -> (String, Double) {
         let prompt = """
-        You are a student focusing on: "\(userFocus)"
-        
-        Your teacher sees this activity on your screen:
+        You are the user focusing on: "\(userFocus)"
+
+        Your accountability teacher sees this activity on your screen:
         - Application: \(appName)
         - Window title: \(windowTitle ?? "N/A")
         - Screen content: \(text)
-        
-        Write a compelling justification for why this activity supports your focus goal. Be creative and persuasive - you want to convince your teacher this is legitimate work toward your goal.
+
+        Write a concise, honest justification for why this activity supports your focus goal. Highlight the concrete value so your teacher understands why this task matters right now.
         
         Provide a JSON response with this EXACT structure:
         {
@@ -398,7 +413,7 @@ class MLXLLMManager: ObservableObject {
         Respond ONLY with valid JSON, no additional text.
         """
         
-        print("🎓 Student MLX Justification: \(selectedModel) | Focus: \(userFocus) | App: \(appName)")
+        debugLog("🎯 User MLX Justification: \(selectedModel) | Focus: \(userFocus) | App: \(appName)")
         
         let session = ChatSession(container)
         let generatedText = try await session.respond(to: prompt)
@@ -406,12 +421,12 @@ class MLXLLMManager: ObservableObject {
         guard let jsonData = generatedText.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let justification = json["justification"] as? String else {
-            print("  ❌ Failed to parse student justification JSON")
+            print("  ❌ Failed to parse user justification JSON")
             throw MLXLLMError.invalidResponse
         }
         
         let confidence = (json["confidence"] as? Double) ?? 0.7
-        print("  ✅ Student says: \(justification) (confidence: \(String(format: "%.2f", confidence)))")
+        debugLog("  ✅ User says: \(justification) (confidence: \(String(format: "%.2f", confidence)))")
         
         return (justification, confidence)
     }
@@ -422,14 +437,14 @@ class MLXLLMManager: ObservableObject {
         }
         
         let prompt = """
-        You are a student focusing on: "\(userFocus)"
-        
-        Your teacher sees this activity on your screen:
+        You are the user focusing on: "\(userFocus)"
+
+        Your accountability teacher sees this activity on your screen:
         - Application: \(appName)
         - Window title: \(windowTitle ?? "N/A")
         - Screen content: \(text)
-        
-        Write a compelling justification for why this activity supports your focus goal. Be creative and persuasive - you want to convince your teacher this is legitimate work toward your goal.
+
+        Write a concise, honest justification for why this activity supports your focus goal. Highlight the concrete value so your teacher understands why this task matters right now.
         
         Provide a JSON response with this EXACT structure:
         {
@@ -440,7 +455,7 @@ class MLXLLMManager: ObservableObject {
         Respond ONLY with valid JSON, no additional text.
         """
         
-        print("🎓 Student Remote Justification: \(selectedModel) | Focus: \(userFocus) | App: \(appName)")
+        debugLog("🎯 User Remote Justification: \(selectedModel) | Focus: \(userFocus) | App: \(appName)")
         
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
         request.httpMethod = "POST"
@@ -463,7 +478,7 @@ class MLXLLMManager: ObservableObject {
             requestBody["response_format"] = [
                 "type": "json_schema",
                 "json_schema": [
-                    "name": "student_justification",
+                    "name": "user_justification",
                     "schema": [
                         "type": "object",
                         "properties": [
@@ -501,35 +516,36 @@ class MLXLLMManager: ObservableObject {
         guard let responseData = cleanedContent.data(using: .utf8),
               let analysisJson = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
               let justification = analysisJson["justification"] as? String else {
-            print("  ❌ Failed to parse student justification JSON: \(content.prefix(100))...")
+            print("  ❌ Failed to parse user justification JSON: \(content.prefix(100))...")
             throw MLXLLMError.invalidResponse
         }
         
         let confidence = (analysisJson["confidence"] as? Double) ?? 0.7
-        print("  ✅ Student says: \(justification) (confidence: \(String(format: "%.2f", confidence)))")
+        debugLog("  ✅ User says: \(justification) (confidence: \(String(format: "%.2f", confidence)))")
         
         return (justification, confidence)
     }
     
     private func performJudgmentAnalysisMLX(container: ModelContainer, text: String, appName: String, windowTitle: String?, justification: String) async throws -> (Bool, String, Double) {
         let prompt = """
-        You are a teacher with students who must stay focused on their goals.
-        
-        STUDENT'S GOAL: "\(userFocus)"
-        
-        STUDENT'S SCREEN ACTIVITY:
+        You are the user's accountability teacher ensuring they stay focused on meaningful work.
+
+        USER'S GOAL: "\(userFocus)"
+
+        USER'S SCREEN ACTIVITY:
         - Application: \(appName)
         - Window title: \(windowTitle ?? "N/A")
         - Screen content: \(text)
-        
-        STUDENT'S JUSTIFICATION: "\(justification)"
-        
-        As a teacher, evaluate whether this student is truly on task or trying to deceive you. Consider:
-        - Does the screen content actually support their goal?
-        - Is their justification reasonable or just creative excuses?
-        - Are they genuinely productive or just trying to get away with something?
-        
-        Be a fair but discerning teacher. Students can be clever with justifications, but you can see through weak excuses.
+
+        USER'S JUSTIFICATION: "\(justification)"
+
+        As the teacher, judge with high standards:
+        - Approve only when the activity clearly advances the goal or provides essential support.
+        - Reject if the justification is vague, off-topic, entertainment, or multitasking with little direct value.
+        - Treat any ambiguity or filler language as a likely distraction; the user must earn a passing verdict.
+        - Call out the specific reason you believe they are on task or distracted.
+
+        Default to DISTRACTED unless the evidence is convincing.
         
         Provide a JSON response with this EXACT structure:
         {
@@ -541,7 +557,7 @@ class MLXLLMManager: ObservableObject {
         Respond ONLY with valid JSON, no additional text.
         """
         
-        print("👩‍🏫 Teacher MLX Judgment: \(selectedModel) | Focus: \(userFocus)")
+        debugLog("👩‍🏫 Teacher MLX Judgment: \(selectedModel) | Focus: \(userFocus)")
         
         let session = ChatSession(container)
         let generatedText = try await session.respond(to: prompt)
@@ -555,7 +571,7 @@ class MLXLLMManager: ObservableObject {
         }
         
         let confidence = (json["confidence"] as? Double) ?? 0.7
-        print("  ✅ Teacher says: \(verdict ? "FOCUSED" : "DISTRACTED") - \(reasoning) (confidence: \(String(format: "%.2f", confidence)))")
+        debugLog("  ✅ Teacher says: \(verdict ? "FOCUSED" : "DISTRACTED") - \(reasoning) (confidence: \(String(format: "%.2f", confidence)))")
         
         return (verdict, reasoning, confidence)
     }
@@ -566,23 +582,24 @@ class MLXLLMManager: ObservableObject {
         }
         
         let prompt = """
-        You are a teacher with students who must stay focused on their goals.
-        
-        STUDENT'S GOAL: "\(userFocus)"
-        
-        STUDENT'S SCREEN ACTIVITY:
+        You are the user's accountability teacher ensuring they stay focused on meaningful work.
+
+        USER'S GOAL: "\(userFocus)"
+
+        USER'S SCREEN ACTIVITY:
         - Application: \(appName)
         - Window title: \(windowTitle ?? "N/A")
         - Screen content: \(text)
-        
-        STUDENT'S JUSTIFICATION: "\(justification)"
-        
-        As a teacher, evaluate whether this student is truly on task or trying to deceive you. Consider:
-        - Does the screen content actually support their goal?
-        - Is their justification reasonable or just creative excuses?
-        - Are they genuinely productive or just trying to get away with something?
-        
-        Be a fair but discerning teacher. Students can be clever with justifications, but you can see through weak excuses.
+
+        USER'S JUSTIFICATION: "\(justification)"
+
+        As the teacher, judge with high standards:
+        - Approve only when the activity clearly advances the goal or provides essential support.
+        - Reject if the justification is vague, off-topic, entertainment, or multitasking with little direct value.
+        - Treat any ambiguity or filler language as a likely distraction; the user must earn a passing verdict.
+        - Call out the specific reason you believe they are on task or distracted.
+
+        Default to DISTRACTED unless the evidence is convincing.
         
         Provide a JSON response with this EXACT structure:
         {
@@ -594,7 +611,7 @@ class MLXLLMManager: ObservableObject {
         Respond ONLY with valid JSON, no additional text.
         """
         
-        print("👩‍🏫 Teacher Remote Judgment: \(selectedModel) | Focus: \(userFocus)")
+        debugLog("👩‍🏫 Teacher Remote Judgment: \(selectedModel) | Focus: \(userFocus)")
         
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
         request.httpMethod = "POST"
@@ -662,7 +679,7 @@ class MLXLLMManager: ObservableObject {
         }
         
         let confidence = (analysisJson["confidence"] as? Double) ?? 0.7
-        print("  ✅ Teacher says: \(verdict ? "FOCUSED" : "DISTRACTED") - \(reasoning) (confidence: \(String(format: "%.2f", confidence)))")
+        debugLog("  ✅ Teacher says: \(verdict ? "FOCUSED" : "DISTRACTED") - \(reasoning) (confidence: \(String(format: "%.2f", confidence)))")
         
         return (verdict, reasoning, confidence)
     }
@@ -704,7 +721,7 @@ class MLXLLMManager: ObservableObject {
         """
         
         // DEBUG: Log OpenAI request
-        print("🤖 OpenAI Request: \(selectedModel) | Focus: \(userFocus) | App: \(appName) | OCR: \(text.count) chars")
+        debugLog("🤖 OpenAI Request: \(selectedModel) | Focus: \(userFocus) | App: \(appName) | OCR: \(text.count) chars")
         
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
         request.httpMethod = "POST"
@@ -756,9 +773,9 @@ class MLXLLMManager: ObservableObject {
             
             // DEBUG: Log key request parameters
             if selectedModel.hasPrefix("gpt-5") {
-                print("  Params: reasoning=minimal, verbosity=low, max_tokens=8000")
+                debugLog("  Params: reasoning=minimal, verbosity=low, max_tokens=8000")
             } else {
-                print("  Params: temperature=0.3, max_tokens=150")
+                debugLog("  Params: temperature=0.3, max_tokens=150")
             }
         } catch {
             print("  ❌ Failed to serialize request: \(error.localizedDescription)")
@@ -774,7 +791,7 @@ class MLXLLMManager: ObservableObject {
             }
             
             // DEBUG: Log response status
-            print("  Response: HTTP \(httpResponse.statusCode)")
+            debugLog("  Response: HTTP \(httpResponse.statusCode)")
             
             // Handle different HTTP status codes more specifically
             switch httpResponse.statusCode {
@@ -832,7 +849,7 @@ class MLXLLMManager: ObservableObject {
             
             // DEBUG: Log parsed result
             let confidence = (analysisJson["confidence"] as? Double) ?? 0.7
-            print("  ✅ Parsed: valid=\(isValid), activity=\(detectedActivity), confidence=\(String(format: "%.2f", confidence))")
+            debugLog("  ✅ Parsed: valid=\(isValid), activity=\(detectedActivity), confidence=\(String(format: "%.2f", confidence))")
             
             var finalIsValid = isValid
             var finalConfidence = (analysisJson["confidence"] as? Double) ?? 0.7
@@ -859,7 +876,7 @@ class MLXLLMManager: ObservableObject {
             )
             
             // DEBUG: Final result
-            print("  Final: \(finalResult.is_valid ? "✓ Focused" : "✗ Distracted") - \(finalResult.detected_activity)")
+            debugLog("  Final: \(finalResult.is_valid ? "✓ Focused" : "✗ Distracted") - \(finalResult.detected_activity)")
             
             return finalResult
             
@@ -1053,4 +1070,3 @@ struct MLXStatusView: View {
         }
     }
 }
-
