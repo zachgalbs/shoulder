@@ -34,14 +34,14 @@
     {
       "target" : {
         "containerPath" : "container:shoulder.xcodeproj",
-        "identifier" : "shoulderTests",
+        "identifier" : "6876FBAC2E3E9FAE008033D5",
         "name" : "shoulderTests"
       }
     },
     {
       "target" : {
         "containerPath" : "container:shoulder.xcodeproj",
-        "identifier" : "shoulderUITests",
+        "identifier" : "6876FBB62E3E9FAE008033D5",
         "name" : "shoulderUITests"
       }
     }
