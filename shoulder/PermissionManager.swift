@@ -61,9 +61,19 @@ class PermissionManager: ObservableObject {
         Task {
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
-            
+
             await MainActor.run {
-                notificationsGranted = settings.authorizationStatus == .authorized
+                switch settings.authorizationStatus {
+                case .authorized, .provisional, .ephemeral:
+                    notificationsGranted = true
+                case .denied:
+                    notificationsGranted = false
+                case .notDetermined:
+                    notificationsGranted = false
+                @unknown default:
+                    notificationsGranted = false
+                }
+                updateOverallStatus()
             }
         }
     }
@@ -90,15 +100,14 @@ class PermissionManager: ObservableObject {
         do {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound])
-            
+
             await MainActor.run {
                 notificationsGranted = granted
                 updateOverallStatus()
             }
-            
+
             return granted
         } catch {
-            print("Failed to request notification permission: \(error)")
             return false
         }
     }

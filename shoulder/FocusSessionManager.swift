@@ -113,13 +113,13 @@ class FocusSessionManager: ObservableObject {
             content.title = "Focus Session Complete"
             content.body = "Your \(focusDurationMinutes) minute focus session on \"\(focusText)\" has ended."
             content.sound = .default
-            
+
             let request = UNNotificationRequest(
                 identifier: UUID().uuidString,
                 content: content,
                 trigger: nil
             )
-            
+
             UNUserNotificationCenter.current().add(request)
             
             endSession()

@@ -13,6 +13,7 @@ struct DashboardView: View {
     @EnvironmentObject var mlxLLMManager: MLXLLMManager
     @EnvironmentObject var screenshotManager: ScreenshotManager
     @EnvironmentObject var focusManager: FocusSessionManager
+    @EnvironmentObject var permissionManager: PermissionManager
     @State private var analysisError: String?
     
     var body: some View {
@@ -45,7 +46,7 @@ struct DashboardView: View {
                     
                     // End Session Button
                     endSessionButton
-                    
+
                     Spacer()
                 }
                 .padding(DesignSystem.Spacing.xxLarge)

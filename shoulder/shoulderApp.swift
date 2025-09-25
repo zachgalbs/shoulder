@@ -18,6 +18,10 @@ struct shoulderApp: App {
     @StateObject private var mlxLLMManager = MLXLLMManager()
     @StateObject private var focusManager = FocusSessionManager()
     @StateObject private var permissionManager = PermissionManager()
+    @StateObject private var notificationController = NotificationPresentationController()
+
+    // Initialize ApplicationBlockingManager to set up notification listeners
+    private let blockingManager = ApplicationBlockingManager.shared
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -35,6 +39,9 @@ struct shoulderApp: App {
     init() {
         // Configure network settings to prevent NECP warnings
         configureNetworking()
+
+        // Initialize ApplicationBlockingManager to ensure notification subscription is set up
+        _ = ApplicationBlockingManager.shared
     }
     
     private func configureNetworking() {
@@ -55,27 +62,28 @@ struct shoulderApp: App {
                     .environmentObject(screenshotManager)
                     .environmentObject(focusManager)
                     .environmentObject(permissionManager)
+                    .environmentObject(notificationController)
                     .frame(minWidth: 600, minHeight: 500)
                     .onAppear {
                         screenMonitor.setModelContext(sharedModelContainer.mainContext)
                         screenshotManager.setMLXLLMManager(mlxLLMManager)
                         screenshotManager.startCapturing()
-                        
+
                         // Request notification permissions for focus session alerts
-                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-                            if granted {
-                            }
+                        Task {
+                            await permissionManager.requestNotificationPermission()
                         }
                     }
             } else {
                 FocusSelectionView()
                     .environmentObject(focusManager)
+                    .environmentObject(permissionManager)
+                    .environmentObject(notificationController)
                     .frame(minWidth: 400, minHeight: 500)
                     .onAppear {
                         // Request notification permissions for focus session alerts
-                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-                            if granted {
-                            }
+                        Task {
+                            await permissionManager.requestNotificationPermission()
                         }
                     }
             }
@@ -83,4 +91,3 @@ struct shoulderApp: App {
         .modelContainer(sharedModelContainer)
     }
 }
-

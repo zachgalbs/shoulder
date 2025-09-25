@@ -87,20 +87,20 @@ class ApplicationBlockingManager: ObservableObject {
               let appName = userInfo["appName"] as? String else {
             return
         }
-        
-        // Only process notifications from actual AI analysis (both local and remote)
-        guard analysis.analysis_source == "llm" || analysis.analysis_source == "remote" else {
-            // Silently ignore non-AI analysis results
+
+        // Only process notifications from actual AI analysis sources we trust
+        let trustedSources: Set<String> = ["llm", "remote", "enhanced_llm", "enhanced_remote"]
+        guard trustedSources.contains(analysis.analysis_source) else {
             return
         }
-        
+
         Task { @MainActor in
             // Send unfocused notification if enabled and activity is off-task
             // ALWAYS send notification when is_valid is false, regardless of confidence
             if unfocusedNotificationsEnabled && !analysis.is_valid {
                 showUnfocusedNotification(appName: appName, analysis: analysis)
             }
-            
+
             // Handle blocking if enabled
             if isBlockingEnabled && !analysis.is_valid && analysis.confidence >= blockingConfidenceThreshold {
                 await blockApplicationIfNeeded(appName: appName, analysis: analysis)
@@ -182,13 +182,13 @@ class ApplicationBlockingManager: ObservableObject {
         let briefReason = reason.map { trimmedNotificationText($0) } ?? "Stay focused"
         content.body = "\(appName): \(briefReason)"
         content.sound = .default
-        
+
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
             content: content,
             trigger: nil
         )
-        
+
         UNUserNotificationCenter.current().add(request)
     }
     
@@ -198,13 +198,13 @@ class ApplicationBlockingManager: ObservableObject {
         let briefExplanation = trimmedNotificationText(analysis.explanation)
         content.body = "\(appName): \(briefExplanation)"
         content.sound = .default
-        
+
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
             content: content,
             trigger: nil
         )
-        
+
         UNUserNotificationCenter.current().add(request)
     }
     
