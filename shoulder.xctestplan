@@ -1,0 +1,50 @@
+{
+  "configurations" : [
+    {
+      "id" : "F5D2BE9C-80A1-4F3A-9B5E-7C8A5D9E1234",
+      "name" : "Test Scheme Action",
+      "options" : {
+        "targetForVariableExpansion" : {
+          "containerPath" : "container:shoulder.xcodeproj",
+          "identifier" : "shoulder",
+          "name" : "shoulder"
+        }
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : {
+      "targets" : [
+        {
+          "containerPath" : "container:shoulder.xcodeproj",
+          "identifier" : "shoulder",
+          "name" : "shoulder"
+        }
+      ]
+    },
+    "environmentVariableEntries" : [
+      {
+        "key" : "TESTING",
+        "value" : "1"
+      }
+    ],
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:shoulder.xcodeproj",
+        "identifier" : "6876FBAC2E3E9FAE008033D5",
+        "name" : "shoulderTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:shoulder.xcodeproj",
+        "identifier" : "6876FBB62E3E9FAE008033D5",
+        "name" : "shoulderUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

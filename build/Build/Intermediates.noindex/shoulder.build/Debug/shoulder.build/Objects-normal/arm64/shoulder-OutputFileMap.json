@@ -1,0 +1,68 @@
+{
+  "" : {
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulder-master.dia",
+    "emit-module-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulder-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulder-master-emit-module.dia",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulder-master.swiftdeps"
+  },
+  "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  },
+  "/Users/zgalbs/src/xcode/shoulder/shoulder/ContentView.swift" : {
+    "const-values" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.d",
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.dia",
+    "index-unit-output-path" : "/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.o",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ContentView~partial.swiftmodule"
+  },
+  "/Users/zgalbs/src/xcode/shoulder/shoulder/Item.swift" : {
+    "const-values" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.swiftconstvalues",
+    "dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.d",
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.dia",
+    "index-unit-output-path" : "/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.o",
+    "llvm-bc" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.bc",
+    "object" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.o",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item.swiftdeps",
+    "swiftmodule" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/Item~partial.swiftmodule"
+  },
+  "/Users/zgalbs/src/xcode/shoulder/shoulder/ScreenVisibilityMonitor.swift" : {
+    "const-values" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.swiftconstvalues",
+    "dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.d",
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.dia",
+    "index-unit-output-path" : "/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.o",
+    "llvm-bc" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.bc",
+    "object" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.o",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor.swiftdeps",
+    "swiftmodule" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenVisibilityMonitor~partial.swiftmodule"
+  },
+  "/Users/zgalbs/src/xcode/shoulder/shoulder/ScreenshotManager.swift" : {
+    "const-values" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.swiftconstvalues",
+    "dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.d",
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.dia",
+    "index-unit-output-path" : "/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.o",
+    "llvm-bc" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.bc",
+    "object" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.o",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager.swiftdeps",
+    "swiftmodule" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/ScreenshotManager~partial.swiftmodule"
+  },
+  "/Users/zgalbs/src/xcode/shoulder/shoulder/shoulderApp.swift" : {
+    "const-values" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.swiftconstvalues",
+    "dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.d",
+    "diagnostics" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.dia",
+    "index-unit-output-path" : "/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.o",
+    "llvm-bc" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.bc",
+    "object" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.o",
+    "swift-dependencies" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp.swiftdeps",
+    "swiftmodule" : "/Users/zgalbs/src/xcode/shoulder/build/Build/Intermediates.noindex/shoulder.build/Debug/shoulder.build/Objects-normal/arm64/shoulderApp~partial.swiftmodule"
+  }
+}
