@@ -107,10 +107,6 @@ The backend server provides the following endpoints:
 
 All AI processing happens locally on your machine using Ollama. No data is sent to external servers.
 
-## License
-
-[Add your license here]
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
